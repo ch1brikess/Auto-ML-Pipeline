@@ -21,11 +21,11 @@ sys.path.append(str(Path(__file__).parent / 'scr' / 'train'))
 sys.path.append(str(Path(__file__).parent / 'scr' / 'test'))
 
 def show_logo():
-    logo = """[red]
+    logo = """
         ╔║║╗╦╗╔╗╦║╔╔═╔╗╔╗
         ║╠╣║╠╣╠╝║╠╣╠═╚╗╚╗
         ╚║║╩╩╝╠╗╩║╚╚═╚╝╚╝
-[/red]"""
+"""
     print(logo)
 
 def show_about():
