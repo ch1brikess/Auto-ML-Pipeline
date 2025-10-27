@@ -19,9 +19,23 @@ ML Pipeline is a comprehensive automated machine learning system designed for bo
 git clone https://github.com/ch1brikess/Auto-ML-Pipeline.git
 cd ml-pipeline
 ```
+2. Install dependencies
+```bash
+pip install -r req.txt
+```
+or
+```bash
+pip3 install -r req.txt
+```
+
 ## Use
 
 Example for use:
 ```bash
 python main.py --path .\titanic.zip --target Transported --classification --algorithm DecisionTreeClassifier --output_columns PassengerId Transported
+```
+
+For more details use:
+```bash
+python main.py --help
 ```
