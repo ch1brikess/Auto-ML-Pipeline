@@ -23,5 +23,5 @@ cd ml-pipeline
 
 Example for use:
 ```bash
-python main.py --path .\titanic.zip --target Transported --algorithm DecisionTreeClassifier --classification --output_columns PassengerId Transported
+python main.py --path .\titanic.zip --target Transported --classification --algorithm DecisionTreeClassifier --output_columns PassengerId Transported
 ```
