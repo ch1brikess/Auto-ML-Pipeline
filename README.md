@@ -16,11 +16,12 @@ ML Pipeline is a comprehensive automated machine learning system designed for bo
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/ch1brikess/Auto-ML-Pipeline.git
 cd ml-pipeline
-
+```
 ## Use
 
-Example:
+Example for use:
 ```bash
 python main.py --path .\titanic.zip --target Transported --algorithm DecisionTreeClassifier --classification --output_columns PassengerId Transported
+```
