@@ -17,7 +17,7 @@ ML Pipeline is a comprehensive automated machine learning system designed for bo
 1. Clone the repository:
 ```bash
 git clone https://github.com/ch1brikess/Auto-ML-Pipeline.git
-cd ml-pipeline
+cd Auto-ML-Pipeline
 ```
 2. Install dependencies
 ```bash
