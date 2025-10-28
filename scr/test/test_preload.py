@@ -5,6 +5,8 @@ import json
 import pickle
 from pathlib import Path
 import warnings
+from colorama import init, Fore
+init(autoreset=True)
 warnings.filterwarnings('ignore')
 
 class TestDataPreprocessor:
@@ -36,14 +38,14 @@ class TestDataPreprocessor:
                         result_df[feature] = df[feature]
                     else:
                         result_df[feature] = 0
-                        print(f"Added missing feature: {feature}")
+                        print(fFore.BLUE+"Added missing feature: {feature}")
             
             for col in self.output_columns:
                 if col in df.columns:
                     result_df[col] = df[col]
             
-            print(f"PassengerId preserved: {len(result_df[args.output_columns[0]])} values")
-            print(f"PassengerId sample: {result_df[args.output_columns[0]].head().tolist()}")
+            print(Fore.BLUE+f"PassengerId preserved: {len(result_df[args.output_columns[0]])} values")
+            print(Fore.BLUE+f"PassengerId sample: {result_df[args.output_columns[0]].head().tolist()}")
             return result_df
         
         return df
@@ -74,7 +76,7 @@ class TestDataPreprocessor:
         for col in high_cardinality_columns:
             if col in df.columns and col not in self.output_columns:
                 df = df.drop(columns=[col])
-                print(f"Removed high cardinality column: {col}")
+                print(Fore.BLUE+f"Removed high cardinality column: {col}")
         
         for col, expected_columns in one_hot_encoded_columns.items():
             if col in df.columns and col not in self.output_columns:
@@ -88,7 +90,7 @@ class TestDataPreprocessor:
                 
                 df = pd.concat([df, dummies], axis=1)
                 df = df.drop(columns=[col])
-                print(f"Encoded categorical feature: {col} with one-hot encoding")
+                print(Fore.BLUE+f"Encoded categorical feature: {col} with one-hot encoding")
         
         for col, encoder_info in label_encoders_info.items():
             if col in df.columns and col == self.target_column and col not in self.output_columns:
@@ -99,7 +101,7 @@ class TestDataPreprocessor:
                 mask = df[col].isin(le.classes_)
                 df.loc[~mask, col] = le.classes_[0]
                 df[col] = le.transform(df[col])
-                print(f"Encoded target column: {col}")
+                print(Fore.MAGENTA+f"Encoded target column: {col}")
         
         return df
     
@@ -113,7 +115,7 @@ class TestDataPreprocessor:
             if numeric_cols:
                 df_numeric = df[numeric_cols]
                 df[numeric_cols] = scaler.transform(df_numeric)
-                print(f"Scaled {len(numeric_cols)} numerical features")
+                print(Fore.BLUE+f"Scaled {len(numeric_cols)} numerical features")
         
         return df
     
@@ -130,18 +132,18 @@ class TestDataPreprocessor:
                 
                 df = df.drop(columns=numeric_cols)
                 df = pd.concat([df, pca_df], axis=1)
-                print(f"Applied PCA transformation")
+                print(Fore.BLUE+f"Applied PCA transformation")
         
         return df
     
     def apply_preprocessing(self, df, args):
-        print("Applying preprocessing to test data...")
-        print(f"Initial shape: {df.shape}")
-        print(f"Output columns to preserve: {self.output_columns}")
+        print(Fore.MAGENTA+"Applying preprocessing to test data...")
+        print(Fore.MAGENTA+f"Initial shape: {df.shape}")
+        print(Fore.MAGENTA+f"Output columns to preserve: {args.output_columns}")
         
-        missing_output_cols = set(self.output_columns) - set(df.columns)
+        missing_output_cols = set(args.output_columns) - set(df.columns)
         if missing_output_cols:
-            print(f"Warning: Missing output columns in test data: {missing_output_cols}")
+            print(Fore.YELLOW+f"Warning: Missing output columns in test data: {missing_output_cols}")
         
         df = self.handle_missing_values(df)
         
@@ -153,19 +155,16 @@ class TestDataPreprocessor:
         
         df = self.apply_pca(df)
         
-        print(f"Final shape: {df.shape}")
+        print(Fore.MAGENTA+f"Final shape: {df.shape}")
         return df
 
 def run_test_preprocessing(args):
     try:
         df = pd.read_csv(args.path)
-        print('1')
-        print(f"Loaded test dataset: {df.shape}")
-        print('2')
-        print(f"Test data columns: {list(df.columns)}")
+        print(Fore.BLUE+f"Loaded test dataset: {df.shape}")
+        print(Fore.BLUE+f"Test data columns: {list(df.columns)}")
     except Exception as e:
-        print(f"Error loading test file: {e}")
-        print(e)
+        print(Fore.RED+f"Error loading test file: {e}")
         return False
     
     cache_dir = Path(__file__).parent.parent.parent / 'cache'
@@ -175,16 +174,16 @@ def run_test_preprocessing(args):
     models_path = train_cache_dir / 'preprocessing_models.pkl'
     
     if not info_path.exists() or not models_path.exists():
-        print("Error: Preprocessing info not found. Run train_preload.py first.")
+        print(Fore.RED+"Error: Preprocessing info not found. Run train_preload.py first.")
         return False
     
     preprocessor = TestDataPreprocessor(info_path, models_path)
     
     processed_df = preprocessor.apply_preprocessing(df, args)
     
-    if 'PassengerId' in processed_df.columns:
-        print(f"Final PassengerId check: {processed_df[args.output_columns[0]].notna().sum()} values")
-        print(f"Final PassengerId sample: {processed_df[args.output_columns[0]].head().tolist()}")
+    if args.output_columns[0] in processed_df.columns:
+        print(Fore.BLUE+f"Final PassengerId check: {processed_df[args.output_columns[0]].notna().sum()} values")
+        print(Fore.BLUE+f"Final PassengerId sample: {processed_df[args.output_columns[0]].head().tolist()}")
     
     test_cache_dir = cache_dir / 'test'
     test_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -193,7 +192,7 @@ def run_test_preprocessing(args):
     output_path = test_cache_dir / f"{input_filename}_processed.csv"
     processed_df.to_csv(output_path, index=False)
     
-    print(f"Processed test dataset saved to: {output_path}")
+    print(Fore.MAGENTA+f"Processed test dataset saved to: {output_path}")
     
     report_path = test_cache_dir / f"{input_filename}_report.txt"
     with open(report_path, 'w', encoding='utf-8') as f:
@@ -206,7 +205,7 @@ def run_test_preprocessing(args):
         f.write(f"Final shape: {processed_df.shape}\n")
         f.write(f"Applied transformations from train preprocessing\n")
     
-    print(f"Test report saved to: {report_path}")
+    print(Fore.MAGENTA+f"Test report saved to: {report_path}")
     return True
 
 def main():

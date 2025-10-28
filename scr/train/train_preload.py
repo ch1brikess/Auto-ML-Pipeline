@@ -8,6 +8,8 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler
 from sklearn.feature_selection import SelectKBest, f_classif, f_regression
 from sklearn.decomposition import PCA
 import warnings
+from colorama import init, Fore
+init(autoreset=True)
 warnings.filterwarnings('ignore')
 
 class DatasetPreprocessor:
@@ -40,7 +42,7 @@ class DatasetPreprocessor:
             
             for feature in missing_features:
                 df_features[feature] = 0
-                print(f"Added missing feature: {feature}")
+                print(Fore.BLUE+f"Added missing feature: {feature}")
             
             df_features = df_features[self.training_features]
             
@@ -50,9 +52,9 @@ class DatasetPreprocessor:
                 df = df_features
             
             if missing_features:
-                print(f"Added {len(missing_features)} missing features")
+                print(Fore.BLUE+f"Added {len(missing_features)} missing features")
             if extra_features:
-                print(f"Removed {len(extra_features)} extra features")
+                print(Fore.BLUE+f"Removed {len(extra_features)} extra features")
         
         return df
             
@@ -65,26 +67,26 @@ class DatasetPreprocessor:
                 
             if df[col].nunique() == len(df):
                 cols_to_remove.append(col)
-                print(f"Removing column '{col}' with all unique values")
+                print(Fore.BLUE+f"Removing column '{col}' with all unique values")
                 continue
                 
             if df[col].nunique() <= 1:
                 cols_to_remove.append(col)
-                print(f"Removing column '{col}' with only one unique value")
+                print(Fore.BLUE+f"Removing column '{col}' with only one unique value")
                 continue
                 
             if df[col].isnull().mean() > 0.5:
                 cols_to_remove.append(col)
-                print(f"Removing column '{col}' with more than 50% missing values")
+                print(Fore.BLUE+f"Removing column '{col}' with more than 50% missing values")
                 continue
                 
             if df[col].nunique() / len(df) > 0.9:
                 cols_to_remove.append(col)
-                print(f"Removing column '{col}' with high cardinality ({df[col].nunique()} unique values)")
+                print(Fore.BLUE+f"Removing column '{col}' with high cardinality ({df[col].nunique()} unique values)")
                 continue
         
         if cols_to_remove:
-            print(f"Removing unnecessary columns: {cols_to_remove}")
+            print(Fore.BLUE+f"Removing unnecessary columns: {cols_to_remove}")
             df = df.drop(columns=cols_to_remove)
         
         return df
@@ -101,11 +103,11 @@ class DatasetPreprocessor:
                 if df[col].dtype in ['object', 'category']:
                     mode_val = df[col].mode()[0] if not df[col].mode().empty else 'Unknown'
                     df[col] = df[col].fillna(mode_val)
-                    print(f"Filled missing values in '{col}' with mode: {mode_val}")
+                    print(Fore.RED+f"Filled missing values in '{col}' with mode: {mode_val}")
                 else:
                     median_val = df[col].median()
                     df[col] = df[col].fillna(median_val)
-                    print(f"Filled missing values in '{col}' with median: {median_val:.4f}")
+                    print(Fore.RED+f"Filled missing values in '{col}' with median: {median_val:.4f}")
         
         return df
     
@@ -120,7 +122,7 @@ class DatasetPreprocessor:
                 le = LabelEncoder()
                 df[col] = le.fit_transform(df[col])
                 self.label_encoders[col] = le
-                print(f"Encoded target column '{col}' with LabelEncoder")
+                print(Fore.BLUE+f"Encoded target column '{col}' with LabelEncoder")
             elif col != self.target_column:
                 n_unique = df[col].nunique()
                 
@@ -131,17 +133,17 @@ class DatasetPreprocessor:
                     dummies = pd.get_dummies(df[col], prefix=col)
                     df = pd.concat([df, dummies], axis=1)
                     df = df.drop(columns=[col])
-                    print(f"Encoded '{col}' with one-hot encoding ({len(dummies.columns)} new features)")
+                    print(Fore.BLUE+f"Encoded '{col}' with one-hot encoding ({len(dummies.columns)} new features)")
                 else:
                     if n_unique / len(df) > 0.5:
-                        print(f"Removing high cardinality column: {col} ({n_unique} unique values)")
+                        print(Fore.BLUE+f"Removing high cardinality column: {col} ({n_unique} unique values)")
                         df = df.drop(columns=[col])
                         self.high_cardinality_columns.append(col)
                     else:
                         freq_encoding = df[col].value_counts().to_dict()
                         df[col] = df[col].map(freq_encoding)
                         df[col] = df[col].fillna(0)
-                        print(f"Encoded '{col}' with frequency encoding ({n_unique} unique values)")
+                        print(Fore.BLUE+f"Encoded '{col}' with frequency encoding ({n_unique} unique values)")
         
         return df
     
@@ -157,7 +159,7 @@ class DatasetPreprocessor:
         to_drop = [column for column in upper_tri.columns if any(upper_tri[column] > 0.95)]
         
         if to_drop:
-            print(f"Removing linearly dependent features: {to_drop}")
+            print(Fore.BLUE+f"Removing linearly dependent features: {to_drop}")
             return df.drop(columns=to_drop)
         
         return df
@@ -190,10 +192,10 @@ class DatasetPreprocessor:
             final_columns = list(selected_features) + list(non_numeric_cols) + [self.target_column] + self.output_columns
             
             self.selected_columns = final_columns
-            print(f"Selected {len(selected_features)} best features out of {len(numeric_cols)} numeric features")
+            print(Fore.BLUE+f"Selected {len(selected_features)} best features out of {len(numeric_cols)} numeric features")
             return df[final_columns]
         except Exception as e:
-            print(f"Feature selection failed: {e}")
+            print(Fore.BLUE+f"Feature selection failed: {e}")
             return df
     
     def scale_features(self, df):
@@ -209,7 +211,7 @@ class DatasetPreprocessor:
             self.scaler = MinMaxScaler()
         
         df[numeric_cols] = self.scaler.fit_transform(df[numeric_cols])
-        print(f"Scaled {len(numeric_cols)} numeric features using {type(self.scaler).__name__}")
+        print(Fore.GREEN+f"Scaled {len(numeric_cols)} numeric features using {type(self.scaler).__name__}")
         return df
     
     def apply_pca(self, df):
@@ -226,16 +228,16 @@ class DatasetPreprocessor:
                 
                 df = df.drop(columns=numeric_cols)
                 df = pd.concat([df, pca_df], axis=1)
-                print(f"Applied PCA: reduced {len(numeric_cols)} features to {pca_features.shape[1]} components")
+                print(Fore.GREEN+f"Applied PCA: reduced {len(numeric_cols)} features to {pca_features.shape[1]} components")
             except Exception as e:
-                print(f"PCA failed: {e}")
+                print(Fore.RED+f"PCA failed: {e}")
         
         return df
     
     def preprocess(self, df, is_training=True):
-        print("Starting dataset processing...")
-        print(f"Initial shape: {df.shape}")
-        print(f"Initial columns: {df.columns.tolist()}")
+        print(Fore.GREEN+"Starting dataset processing...")
+        print(Fore.BLUE+f"Initial shape: {df.shape}")
+        print(Fore.BLUE+f"Initial columns: {df.columns.tolist()}")
         
         df = self.remove_unnecessary_columns(df)
         df = self.handle_missing_values(df)
@@ -253,7 +255,7 @@ class DatasetPreprocessor:
         for col in df.columns:
             if col != self.target_column and self.target_column in col:
                 columns_to_remove.append(col)
-                print(f"Removing column '{col}' - possible target leakage")
+                print(Fore.BLUE+f"Removing column '{col}' - possible target leakage")
         
         if columns_to_remove:
             df = df.drop(columns=columns_to_remove)
@@ -262,8 +264,8 @@ class DatasetPreprocessor:
             df = self.scale_features(df)
             df = self.apply_pca(df)
         
-        print(f"Final shape: {df.shape}")
-        print(f"Final columns: {df.columns.tolist()}")
+        print(Fore.MAGENTA+f"Final shape: {df.shape}")
+        print(Fore.MAGENTA+f"Final columns: {df.columns.tolist()}")
         return df
 
 def save_preprocessing_info(preprocessor, input_path, output_path):
@@ -300,25 +302,25 @@ def save_preprocessing_info(preprocessor, input_path, output_path):
 
 def run_train_preprocessing(args):
     if not (args.classification or args.regression):
-        print("Error: must specify --classification or --regression")
+        print(Fore.RED+"Error: must specify --classification or --regression")
         return False
     
     if args.classification and args.regression:
-        print("Error: cannot specify both --classification and --regression")
+        print(Fore.RED+"Error: cannot specify both --classification and --regression")
         return False
     
     task_type = 'classification' if args.classification else 'regression'
     
     try:
         df = pd.read_csv(args.path)
-        print(f"Loaded dataset: {df.shape}")
+        print(Fore.BLUE+f"Loaded dataset: {df.shape}")
     except Exception as e:
-        print(f"Error loading file: {e}")
+        print(Fore.RED+f"Error loading file: {e}")
         return False
     
     if args.target not in df.columns:
-        print(f"Error: target column '{args.target}' not found in dataset")
-        print(f"Available columns: {list(df.columns)}")
+        print(Fore.RED+f"Error: target column '{args.target}' not found in dataset")
+        print(Fore.RED+f"Available columns: {list(df.columns)}")
         return False
     
     cache_dir = Path(__file__).parent.parent.parent / 'cache' / 'train'
@@ -335,12 +337,12 @@ def run_train_preprocessing(args):
     output_path = cache_dir / f"{input_filename}_processed.csv"
     processed_df.to_csv(output_path, index=False)
     
-    print(f"Processed dataset saved to: {output_path}")
+    print(Fore.BLUE+f"Processed dataset saved to: {output_path}")
     
     info_path, model_path = save_preprocessing_info(preprocessor, args.path, output_path)
     
-    print(f"Preprocessing info saved to: {info_path}")
-    print(f"Preprocessing models saved to: {model_path}")
+    print(Fore.BLUE+f"Preprocessing info saved to: {info_path}")
+    print(Fore.BLUE+f"Preprocessing models saved to: {model_path}")
     
     report_path = cache_dir / f"{input_filename}_report.txt"
     with open(report_path, 'w', encoding='utf-8') as f:
@@ -357,7 +359,7 @@ def run_train_preprocessing(args):
         f.write(f"PCA applied: {preprocessor.pca is not None}\n")
         f.write(f"High cardinality columns removed: {preprocessor.high_cardinality_columns}\n")
     
-    print(f"Report saved to: {report_path}")
+    print(Fore.RED+f"Report saved to: {report_path}")
     return True
 
 def main():
