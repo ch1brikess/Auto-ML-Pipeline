@@ -168,7 +168,7 @@ def run_test_preprocessing(args):
         print(e)
         return False
     
-    cache_dir = Path(__file__).parent.parent.parent / 'cashe'
+    cache_dir = Path(__file__).parent.parent.parent / 'cache'
     train_cache_dir = cache_dir / 'train'
     
     info_path = train_cache_dir / 'preprocessing_info.json'

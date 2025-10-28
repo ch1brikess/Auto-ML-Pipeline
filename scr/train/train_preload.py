@@ -321,7 +321,7 @@ def run_train_preprocessing(args):
         print(f"Available columns: {list(df.columns)}")
         return False
     
-    cache_dir = Path(__file__).parent.parent.parent / 'cashe' / 'train'
+    cache_dir = Path(__file__).parent.parent.parent / 'cache' / 'train'
     cache_dir.mkdir(parents=True, exist_ok=True)
     
     preprocessor = DatasetPreprocessor(
