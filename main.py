@@ -15,18 +15,19 @@ from sklearn.metrics import accuracy_score, mean_squared_error, r2_score, classi
 from sklearn.model_selection import GridSearchCV
 from tqdm import tqdm
 import warnings
+from rich import console
 warnings.filterwarnings('ignore')
 
 sys.path.append(str(Path(__file__).parent / 'scr' / 'train'))
 sys.path.append(str(Path(__file__).parent / 'scr' / 'test'))
 
 def show_logo():
-    logo = """
+    logo = """[red]
         ╔║║╗╦╗╔╗╦║╔╔═╔╗╔╗
         ║╠╣║╠╣╠╝║╠╣╠═╚╗╚╗
-        ╚║║╩╩╝╠╗╩║╚╚═╚╝╚╝
+        ╚║║╩╩╝╠╗╩║╚╚═╚╝╚╝[/red]
 """
-    print(logo)
+    console.print(logo)
 
 def show_about():
     about_file = Path(__file__).parent / 'about.txt'
@@ -255,21 +256,17 @@ class MLPipeline:
             train_predictions = self.model.predict(X_train_features)
             print(f"Training predictions distribution: {pd.Series(train_predictions).value_counts()}")
         
-        # Сохранение модели если требуется
         if self.save_model:
             import os
             import pickle
             import datetime
             
-            # Создаем папку results если её нет
             results_dir = "results"
             os.makedirs(results_dir, exist_ok=True)
             
-            # Генерируем имя файла с временной меткой
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             model_filename = f"{results_dir}/{self.algorithm}_model_{timestamp}.pkl"
             
-            # Сохраняем модель
             with open(model_filename, 'wb') as f:
                 pickle.dump(self.model, f)
             
@@ -477,6 +474,19 @@ def find_submission_template(csv_files):
             return file
     return None
 
+def clear_directories(path):
+    for i in path:
+        folder_path = i
+        for filename in os.listdir(folder_path):
+            file_path = os.path.join(folder_path, filename)
+            try:
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+            except Exception as e:
+                print(f'Error with delete file: {file_path}. {e}')
+    print('Done cleaning cache.')
+
+
 def run_preprocessing(args):
     try:
         from train_preload import run_train_preprocessing
@@ -493,7 +503,7 @@ def run_preprocessing(args):
         with tqdm(total=2, desc="Data preprocessing") as pbar:
             print("Step 1/2: Preprocessing training data...")
             train_args = TrainArgs(
-                path=str(Path('cashe/scr/train.csv')),
+                path=str(Path('cache/scr/train.csv')),
                 target=args.target,
                 classification=args.classification,
                 regression=args.regression,
@@ -506,7 +516,7 @@ def run_preprocessing(args):
             
             print("Step 2/2: Preprocessing test data...")
             test_args = TrainArgs(
-                path=str(Path('cashe/scr/test.csv')),
+                path=str(Path('cache/scr/test.csv')),
                 target=args.target,
                 classification=args.classification,
                 regression=args.regression,
@@ -556,45 +566,45 @@ Examples:
         return
     
     if args.clear:
-        clear_directories()
+        clear_directories(['cache/train', 'cache/test', 'cache/scr'])
         return
     
-    if not all([args.path, args.target, args.algorithm]):
+    if not all([args.path, args.target, args.algorithm, agrs.clear]):
         parser.print_help()
-        print("\n❌ Error: --path, --target, and --algorithm are required arguments")
+        print("\nError: --path, --target, and --algorithm are required arguments")
         return
     
     if not (args.classification or args.regression):
-        print("❌ Error: must specify --classification or --regression")
+        print("Error: must specify --classification or --regression")
         return
     
     if args.classification and args.regression:
-        print("❌ Error: cannot specify both --classification and --regression")
+        print("Error: cannot specify both --classification and --regression")
         return
     
     task_type = 'classification' if args.classification else 'regression'
     
-    print("🚀 Starting ML Pipeline...")
-    print(f"📁 Archive: {args.path}")
-    print(f"🎯 Target: {args.target}")
-    print(f"🤖 Algorithm: {args.algorithm}")
-    print(f"📊 Task type: {task_type}")
+    print("Starting ML Pipeline...")
+    print(f"Archive: {args.path}")
+    print(f"Target: {args.target}")
+    print(f"Algorithm: {args.algorithm}")
+    print(f"Task type: {task_type}")
     print("=" * 50)
     
-    Path('cashe/scr').mkdir(parents=True, exist_ok=True)
+    Path('cache/scr').mkdir(parents=True, exist_ok=True)
     Path('results').mkdir(parents=True, exist_ok=True)
     
     with tqdm(total=4, desc="Overall progress") as main_pbar:
         print("Step 1/4: Extracting archive...")
         try:
-            extract_zip(args.path, 'cashe/scr')
+            extract_zip(args.path, 'cache/scr')
         except Exception as e:
-            print(f"❌ Error extracting zip file: {e}")
+            print(f"Error extracting zip file: {e}")
             return
         main_pbar.update(1)
         
-        csv_files = find_csv_files('cashe/scr')
-        print(f"📄 Found CSV files: {list(csv_files.keys())}")
+        csv_files = find_csv_files('cache/scr')
+        print(f"Found CSV files: {list(csv_files.keys())}")
         
         train_files = [f for name, f in csv_files.items() if 'train' in name.lower()]
         test_files = [f for name, f in csv_files.items() if 'test' in name.lower()]
@@ -604,16 +614,16 @@ Examples:
         test_file = test_files[0] if test_files else None
         
         if not train_file:
-            print("❌ Error: train CSV file not found in archive")
+            print("Error: train CSV file not found in archive")
             return
         
-        print(f"✅ Train file: {train_file}")
-        print(f"✅ Test file: {test_file}")
+        print(f"Train file: {train_file}")
+        print(f"Test file: {test_file}")
         
         if train_file:
-            train_file.rename('cashe/scr/train.csv')
+            train_file.rename('cache/scr/train.csv')
         if test_file:
-            test_file.rename('cashe/scr/test.csv')
+            test_file.rename('cache/scr/test.csv')
         
         if submission_file:
             submission_df = pd.read_csv(submission_file)
@@ -627,33 +637,33 @@ Examples:
         try:
             success = run_preprocessing(args)
             if not success:
-                print("❌ Error in preprocessing step")
+                print("Error in preprocessing step")
                 return
             main_pbar.update(1)
-            print("✅ Preprocessing completed successfully")
+            print("Preprocessing completed successfully")
         except Exception as e:
-            print(f"❌ Error in preprocessing: {e}")
+            print(f"Error in preprocessing: {e}")
             import traceback
             traceback.print_exc()
             return
         
         print("Step 3/4: Loading processed data...")
         try:
-            train_processed_path = Path('cashe/train/train_processed.csv')
-            test_processed_path = Path('cashe/test/test_processed.csv')
+            train_processed_path = Path('cache/train/train_processed.csv')
+            test_processed_path = Path('cache/test/test_processed.csv')
             
             if not train_processed_path.exists():
-                print(f"❌ Processed train file not found: {train_processed_path}")
+                print(f"Processed train file not found: {train_processed_path}")
                 return
             if not test_processed_path.exists():
-                print(f"❌ Processed test file not found: {test_processed_path}")
+                print(f"Processed test file not found: {test_processed_path}")
                 return
             
             train_processed = pd.read_csv(train_processed_path)
             test_processed = pd.read_csv(test_processed_path)
             
-            print(f"✅ Processed train data shape: {train_processed.shape}")
-            print(f"✅ Processed test data shape: {test_processed.shape}")
+            print(f"Processed train data shape: {train_processed.shape}")
+            print(f"Processed test data shape: {test_processed.shape}")
             print(f"Train columns: {list(train_processed.columns)}")
             print(f"Test columns: {list(test_processed.columns)}")
             
@@ -661,14 +671,14 @@ Examples:
                 print(f"{args.output_columns[0]} in test data: {test_processed[args.output_columns[0]].notna().sum()} values")
                 print(f"First 5 {args.output_columns[0]}: {test_processed[args.output_columns[0]].head().tolist()}")
         except Exception as e:
-            print(f"❌ Error loading processed data: {e}")
+            print(f"Error loading processed data: {e}")
             import traceback
             traceback.print_exc()
             return
         main_pbar.update(1)
         
         if args.target not in train_processed.columns:
-            print(f"❌ Error: target column '{args.target}' not found in processed data")
+            print(f"Error: target column '{args.target}' not found in processed data")
             print(f"Available columns: {list(train_processed.columns)}")
             return
         
@@ -720,12 +730,12 @@ Examples:
             metrics = {}
             
             if has_test_target:
-                print("\n📊 Evaluating on test data:")
+                print("\nEvaluating on test data:")
                 metrics = pipeline.evaluate(X_test_aligned, y_test)
             else:
-                print("\n⚠️ No target in test data, skipping evaluation")
+                print("\nNo target in test data, skipping evaluation")
             
-            print("\n🎯 Making predictions...")
+            print("\nMaking predictions...")
             predictions = pipeline.predict(X_test_aligned)
             print(f"Predictions shape: {predictions.shape}")
             print(f"First 10 predictions: {predictions[:10]}")
@@ -734,10 +744,10 @@ Examples:
             save_results(pipeline, predictions, test_processed, args, metrics, task_type)
             
             main_pbar.update(1)
-            print("\n✅ Pipeline completed successfully!")
+            print("\nPipeline completed successfully!")
             
         except Exception as e:
-            print(f"❌ Error in ML pipeline: {e}")
+            print(f"Error in ML pipeline: {e}")
             import traceback
             traceback.print_exc()
 
@@ -754,18 +764,18 @@ def save_results(pipeline, predictions, test_data, args, metrics, task_type):
     
     if passenger_id_col:
         output_df[args.output_columns[0]] = test_data[passenger_id_col].values
-        print(f"✅ Using '{passenger_id_col}' as PassengerId with {len(test_data[passenger_id_col])} values")
-        print(f"📊 PassengerId sample: {output_df[args.output_columns[0]].head().tolist()}")
+        print(f"Using '{passenger_id_col}' as PassengerId with {len(test_data[passenger_id_col])} values")
+        print(f"PassengerId sample: {output_df[args.output_columns[0]].head().tolist()}")
     else:
-        output_df['Id'] = range(1, len(predictions) + 1)
-        print("⚠️ PassengerId not found, generated sequential IDs")
+        output_df[args.target] = range(1, len(predictions) + 1)
+        print("PassengerId not found, generated sequential IDs")
     
     if args.output_columns and len(args.output_columns) > 0:
         prediction_column = args.output_columns[-1]
-        print(f"🎯 Using '{prediction_column}' as prediction column name")
+        print(f"Using '{prediction_column}' as prediction column name")
     else:
         prediction_column = 'Survived'
-        print(f"🎯 Using default '{prediction_column}' as prediction column name")
+        print(f"Using default '{prediction_column}' as prediction column name")
     
     output_df[prediction_column] = predictions
     
@@ -776,7 +786,7 @@ def save_results(pipeline, predictions, test_data, args, metrics, task_type):
                 col != prediction_column and
                 col != passenger_id_col):
                 output_df[col] = test_data[col].values
-                print(f"✅ Added output column: {col}")
+                print(f"Added output column: {col}")
     
     predictions_path = results_dir / 'predictions.csv'
     output_df.to_csv(predictions_path, index=False)
@@ -818,7 +828,7 @@ def save_results(pipeline, predictions, test_data, args, metrics, task_type):
         f.write(f"Total predictions: {len(predictions)}\n")
         f.write(f"Output columns: {list(output_df.columns)}\n")
     
-    print(f"\n💾 Results saved to {results_dir}:")
+    print(f"\nResults saved to {results_dir}:")
     print(f"   - Predictions: {predictions_path}")
     print(f"   - Training info: {info_path}")
     print(f"   - Report: {report_path}")
@@ -828,9 +838,9 @@ def save_results(pipeline, predictions, test_data, args, metrics, task_type):
     print(output_df.head(10))
     
     if len(output_df) == 0:
-        print("❌ ERROR: Output file is empty!")
+        print("ERROR: Output file is empty!")
     else:
-        print(f"✅ SUCCESS: Generated {len(output_df)} predictions with PassengerId and {prediction_column} columns")
+        print(f"SUCCESS: Generated {len(output_df)} predictions with {args.output_columns[0]} and {prediction_column} columns")
 
 if __name__ == "__main__":
     main()
