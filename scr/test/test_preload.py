@@ -22,7 +22,7 @@ class TestDataPreprocessor:
         with open(models_path, 'rb') as f:
             return pickle.load(f)
     
-    def ensure_feature_consistency(self, df):
+    def ensure_feature_consistency(self, df, args):
         training_features = self.preprocessing_info.get('training_features', [])
         
         if training_features:
@@ -42,8 +42,8 @@ class TestDataPreprocessor:
                 if col in df.columns:
                     result_df[col] = df[col]
             
-            print(f"PassengerId preserved: {len(result_df['PassengerId'])} values")
-            print(f"PassengerId sample: {result_df['PassengerId'].head().tolist()}")
+            print(f"PassengerId preserved: {len(result_df[args.output_columns[0]])} values")
+            print(f"PassengerId sample: {result_df[args.output_columns[0]].head().tolist()}")
             return result_df
         
         return df
@@ -103,11 +103,12 @@ class TestDataPreprocessor:
         
         return df
     
-    def scale_features(self, df):
-        scaler = self.models.get('scaler')
+    def scale_features(self, df, args):
+        # scaler = self.models.get('scaler')
+        scaler = None
         if scaler is not None:
             numeric_cols = [col for col in df.select_dtypes(include=[np.number]).columns 
-                           if col not in self.output_columns and col != self.target_column]
+                           if col not in args.output_columns and col != args.target]
             
             if numeric_cols:
                 df_numeric = df[numeric_cols]
@@ -133,7 +134,7 @@ class TestDataPreprocessor:
         
         return df
     
-    def apply_preprocessing(self, df):
+    def apply_preprocessing(self, df, args):
         print("Applying preprocessing to test data...")
         print(f"Initial shape: {df.shape}")
         print(f"Output columns to preserve: {self.output_columns}")
@@ -146,9 +147,9 @@ class TestDataPreprocessor:
         
         df = self.encode_categorical_features(df)
         
-        df = self.ensure_feature_consistency(df)
+        df = self.ensure_feature_consistency(df, args)
         
-        df = self.scale_features(df)
+        df = self.scale_features(df, args)
         
         df = self.apply_pca(df)
         
@@ -158,12 +159,13 @@ class TestDataPreprocessor:
 def run_test_preprocessing(args):
     try:
         df = pd.read_csv(args.path)
+        print('1')
         print(f"Loaded test dataset: {df.shape}")
+        print('2')
         print(f"Test data columns: {list(df.columns)}")
-        if 'PassengerId' in df.columns:
-            print(f"Original PassengerId sample: {df['PassengerId'].head().tolist()}")
     except Exception as e:
         print(f"Error loading test file: {e}")
+        print(e)
         return False
     
     cache_dir = Path(__file__).parent.parent.parent / 'cashe'
@@ -178,11 +180,11 @@ def run_test_preprocessing(args):
     
     preprocessor = TestDataPreprocessor(info_path, models_path)
     
-    processed_df = preprocessor.apply_preprocessing(df)
+    processed_df = preprocessor.apply_preprocessing(df, args)
     
     if 'PassengerId' in processed_df.columns:
-        print(f"Final PassengerId check: {processed_df['PassengerId'].notna().sum()} values")
-        print(f"Final PassengerId sample: {processed_df['PassengerId'].head().tolist()}")
+        print(f"Final PassengerId check: {processed_df[args.output_columns[0]].notna().sum()} values")
+        print(f"Final PassengerId sample: {processed_df[args.output_columns[0]].head().tolist()}")
     
     test_cache_dir = cache_dir / 'test'
     test_cache_dir.mkdir(parents=True, exist_ok=True)

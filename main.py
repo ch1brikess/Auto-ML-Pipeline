@@ -40,7 +40,7 @@ def show_about():
         print("Description: Automated ML pipeline for classification and regression tasks")
 
 class MLPipeline:
-    def __init__(self, algorithm, task_type, target_column, output_columns=None):
+    def __init__(self, algorithm, task_type, target_column, save_model, output_columns=None):
         self.algorithm = algorithm
         self.task_type = task_type
         self.target_column = target_column
@@ -48,6 +48,7 @@ class MLPipeline:
         self.model = None
         self.best_params = None
         self.feature_names = None
+        self.save_model = save_model
         
     def get_algorithm_class(self):
         algorithms = {
@@ -253,6 +254,26 @@ class MLPipeline:
             
             train_predictions = self.model.predict(X_train_features)
             print(f"Training predictions distribution: {pd.Series(train_predictions).value_counts()}")
+        
+        # Сохранение модели если требуется
+        if self.save_model:
+            import os
+            import pickle
+            import datetime
+            
+            # Создаем папку results если её нет
+            results_dir = "results"
+            os.makedirs(results_dir, exist_ok=True)
+            
+            # Генерируем имя файла с временной меткой
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            model_filename = f"{results_dir}/{self.algorithm}_model_{timestamp}.pkl"
+            
+            # Сохраняем модель
+            with open(model_filename, 'wb') as f:
+                pickle.dump(self.model, f)
+            
+            print(f"✅ Model saved to: {model_filename}")
         
         return self.model
     
@@ -490,6 +511,7 @@ def run_preprocessing(args):
                 classification=args.classification,
                 regression=args.regression,
                 output_columns=args.output_columns
+                
             )
             
             if not run_test_preprocessing(test_args):
@@ -525,11 +547,16 @@ Examples:
     parser.add_argument('--regression', '-r', action='store_true', help='Regression task')
     parser.add_argument('--output_columns', '-o', type=str, nargs='+', help='Output columns to preserve')
     parser.add_argument('--about', '-ab', action='store_true', help='Show information about the program')
-    
+    parser.add_argument('--clear', '-cl', action='store_true', help='Clear data')
+    parser.add_argument('--save_model', '-sm', action='store_true', help='Clear data')
     args = parser.parse_args()
     
     if args.about:
         show_about()
+        return
+    
+    if args.clear:
+        clear_directories()
         return
     
     if not all([args.path, args.target, args.algorithm]):
@@ -630,9 +657,9 @@ Examples:
             print(f"Train columns: {list(train_processed.columns)}")
             print(f"Test columns: {list(test_processed.columns)}")
             
-            if 'PassengerId' in test_processed.columns:
-                print(f"PassengerId in test data: {test_processed['PassengerId'].notna().sum()} values")
-                print(f"First 5 PassengerId: {test_processed['PassengerId'].head().tolist()}")
+            if args.output_columns[0] in test_processed.columns:
+                print(f"{args.output_columns[0]} in test data: {test_processed[args.output_columns[0]].notna().sum()} values")
+                print(f"First 5 {args.output_columns[0]}: {test_processed[args.output_columns[0]].head().tolist()}")
         except Exception as e:
             print(f"❌ Error loading processed data: {e}")
             import traceback
@@ -663,7 +690,8 @@ Examples:
                 algorithm=args.algorithm,
                 task_type=task_type,
                 target_column=args.target,
-                output_columns=args.output_columns or []
+                output_columns=args.output_columns or [],
+                save_model=args.save_model
             )
             
             print(f"Training data shape: {X_train.shape}")
@@ -719,17 +747,17 @@ def save_results(pipeline, predictions, test_data, args, metrics, task_type):
     output_df = pd.DataFrame()
     
     passenger_id_col = None
-    for col in ['PassengerId', 'passengerid', 'PassengerID', 'ID', 'Id']:
+    for col in [args.output_columns[0]]:
         if col in test_data.columns:
             passenger_id_col = col
             break
     
     if passenger_id_col:
-        output_df['PassengerId'] = test_data[passenger_id_col].values
+        output_df[args.output_columns[0]] = test_data[passenger_id_col].values
         print(f"✅ Using '{passenger_id_col}' as PassengerId with {len(test_data[passenger_id_col])} values")
-        print(f"📊 PassengerId sample: {output_df['PassengerId'].head().tolist()}")
+        print(f"📊 PassengerId sample: {output_df[args.output_columns[0]].head().tolist()}")
     else:
-        output_df['PassengerId'] = range(1, len(predictions) + 1)
+        output_df['Id'] = range(1, len(predictions) + 1)
         print("⚠️ PassengerId not found, generated sequential IDs")
     
     if args.output_columns and len(args.output_columns) > 0:
@@ -744,7 +772,7 @@ def save_results(pipeline, predictions, test_data, args, metrics, task_type):
     if args.output_columns:
         for col in args.output_columns:
             if (col in test_data.columns and 
-                col != 'PassengerId' and 
+                col != args.output_columns[0] and 
                 col != prediction_column and
                 col != passenger_id_col):
                 output_df[col] = test_data[col].values
