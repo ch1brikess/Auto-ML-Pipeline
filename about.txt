@@ -1,0 +1,134 @@
+ML PIPELINE DOCUMENTATION
+=========================
+
+COMMAND LINE ARGUMENTS:
+-----------------------
+
+REQUIRED ARGUMENTS:
+--path, -p        Path to ZIP archive containing CSV files
+--target, -t      Target column name for prediction
+--algorithm, -a   Machine learning algorithm to use
+
+TASK TYPE (choose one):
+--classification, -c   Classification task
+--regression, -r      Regression task
+
+OPTIONAL ARGUMENTS:
+--output_columns, -o   Additional columns to preserve in output
+--about, -a           Show program information
+--help, -h            Show help message
+
+SUPPORTED ALGORITHMS:
+---------------------
+
+CLASSIFICATION:
+- RandomForestClassifier
+- LogisticRegression
+- SVC (Support Vector Classification)
+- DecisionTreeClassifier
+- KNeighborsClassifier
+
+REGRESSION:
+- RandomForestRegressor
+- LinearRegression
+- SVR (Support Vector Regression)
+- DecisionTreeRegressor
+- KNeighborsRegressor
+
+INPUT REQUIREMENTS:
+-------------------
+
+ZIP ARCHIVE MUST CONTAIN:
+- train.csv (required) - Training dataset with target column
+- test.csv (required) - Test dataset for predictions
+- gender_submission.csv (optional) - Submission template
+
+CSV FILE FORMAT:
+- First row must contain column headers
+- Target column must exist in training data
+- Test data should have compatible feature structure
+
+OUTPUT FILES:
+-------------
+
+RESULTS DIRECTORY CONTAINS:
+- predictions.csv     - Final predictions with PassengerId
+- training_info.json  - Detailed training parameters and metrics
+- training_report.txt - Comprehensive training report
+
+PREDICTIONS.CSV COLUMNS:
+- PassengerId - From test data or generated sequentially
+- Survived    - Prediction results (classification)
+- Additional columns specified by --output_columns
+
+EXAMPLE COMMANDS:
+-----------------
+
+1. Basic classification:
+python main.py -p data.zip -t Survived -c -a RandomForestClassifier
+
+2. Regression with output columns:
+python main.py -p housing.zip -t price -r -a LinearRegression -o ID Location
+
+3. Show program information:
+python main.py --about
+
+4. Get help:
+python main.py -h
+
+WORKFLOW DESCRIPTION:
+--------------------
+
+1. EXTRACTION:
+   - Automatically extracts CSV files from ZIP archive
+   - Identifies train.csv and test.csv files
+   - Looks for submission template
+
+2. PREPROCESSING:
+   - Handles missing values (median for numeric, mode for categorical)
+   - Encodes categorical variables (one-hot for low cardinality, frequency for medium)
+   - Removes high cardinality and unnecessary columns
+   - Scales numerical features
+   - Applies feature selection and PCA if needed
+
+3. MODEL TRAINING:
+   - Performs hyperparameter tuning with GridSearchCV
+   - Uses 3-fold cross-validation
+   - Selects best parameters based on accuracy (classification) or R² (regression)
+
+4. PREDICTION:
+   - Aligns features between train and test datasets
+   - Generates predictions on test data
+   - Ensures consistent feature names and order
+
+5. RESULTS:
+   - Saves predictions in required format
+   - Generates comprehensive reports and metrics
+   - Preserves specified output columns
+
+
+## Input Format
+
+### ZIP Archive Structure
+The input should be a ZIP archive containing:
+- `train.csv` - Training dataset (required)
+- `test.csv` - Test dataset (required)
+- Optional submission template file (e.g., `gender_submission.csv`)
+
+### CSV File Requirements
+- First row should contain column headers
+- Target column must be present in training data
+- Test data should have the same feature structure as training data
+
+## Output
+
+The pipeline generates the following files in the `results/` directory:
+
+- `predictions.csv` - Final predictions with PassengerId
+- `training_info.json` - Detailed training information and parameters
+- `training_report.txt` - Comprehensive training report
+
+### Output Columns
+- `PassengerId` - Identifier from test data (or generated sequentially)
+- `Survived` - Prediction results (or target column name for regression)
+- Additional columns specified via `--output_columns`
