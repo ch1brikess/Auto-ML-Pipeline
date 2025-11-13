@@ -1,8 +1,8 @@
 # ML Pipeline - Automated Machine Learning Pipeline
 
 # Languages
-## [EN](#EN)
-## [RU](#RU)
+1. [EN](#EN)
+2. [RU](#RU)
 
 # EN
 
