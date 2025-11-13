@@ -1,5 +1,11 @@
 # ML Pipeline - Automated Machine Learning Pipeline
 
+# Languages
+# [EN](#EN)
+# [RU](#RU)
+
+# EN
+
 ## Overview
 
 ML Pipeline is a comprehensive automated machine learning system designed for both classification and regression tasks. It provides end-to-end automation from data preprocessing to model training and prediction generation.
