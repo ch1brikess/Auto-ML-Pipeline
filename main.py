@@ -251,7 +251,7 @@ class MLPipeline:
         return X_train_aligned, X_test_aligned
     
     def train_model(self, X_train, y_train):
-        self.print_message(f"Training {self.algorithm}...")
+        print(f"Training {self.algorithm}")
         
         feature_columns = [col for col in X_train.columns 
                         if col not in self.output_columns 
@@ -261,76 +261,80 @@ class MLPipeline:
         
         self.feature_names = feature_columns
         
-        self.print_message(f"Training on {len(self.feature_names)} features")
-        self.print_message(f"Training data shape: {X_train_features.shape}")
+        print(f"Training on {len(self.feature_names)} features")
+        print(f"Training data shape: {X_train_features.shape}")
         
         if len(self.feature_names) == 0:
-            raise ValueError(Fore.RED+"No features available for training")
+            raise ValueError("No features available for training")
         
         algorithm_class = self.get_algorithm_class()
         param_grid = self.get_hyperparameters()
         
-        self.print_message(f"Target distribution:")
-        if not self.no_view:
-            print(y_train.value_counts() if self.task_type == 'classification' else f"Range: {y_train.min():.2f} - {y_train.max():.2f}")
+        print("Target distribution:")
+        print(y_train.value_counts() if self.task_type == 'classification' else f"Range: {y_train.min():.2f} - {y_train.max():.2f}")
         
-        self.print_message("Calculating cross-validation score...", Fore.MAGENTA)
+        print("Calculating cross-validation score")
         base_model = algorithm_class(random_state=self.random_state)
         cv_scores = cross_val_score(base_model, X_train_features, y_train, cv=self.cv_folds, 
-                                   scoring='accuracy' if self.task_type == 'classification' else 'r2')
-        self.print_message(f"CV Score: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
+                                scoring='accuracy' if self.task_type == 'classification' else 'r2')
+        print(f"CV Score: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
         
         if param_grid:
-            self.print_message("Performing hyperparameter tuning...")
+            print("Performing hyperparameter tuning")
             
             total_combinations = 1
             for values in param_grid.values():
                 total_combinations *= len(values)
             
-            self.print_message(f"Testing {total_combinations} parameter combinations with {self.cv_folds}-fold CV")
+            print(f"Testing {total_combinations} parameter combinations with {self.cv_folds}-fold CV")
+            print(f"Total fits: {total_combinations * self.cv_folds}")
             
-            scoring = 'accuracy' if self.task_type == 'classification' else 'r2'
-            
-            if self.no_view:
+            # Если слишком много комбинаций, используем RandomizedSearchCV
+            if total_combinations * self.cv_folds > 500:
+                print("Too many combinations, using RandomizedSearchCV with 50 iterations")
+                from sklearn.model_selection import RandomizedSearchCV
+                scoring = 'accuracy' if self.task_type == 'classification' else 'r2'
+                
+                grid_search = RandomizedSearchCV(
+                    algorithm_class(random_state=self.random_state),
+                    param_grid,
+                    n_iter=50,
+                    cv=self.cv_folds,
+                    scoring=scoring,
+                    n_jobs=self.n_jobs,
+                    random_state=self.random_state
+                )
+            else:
+                scoring = 'accuracy' if self.task_type == 'classification' else 'r2'
                 grid_search = GridSearchCV(
                     algorithm_class(random_state=self.random_state),
                     param_grid,
                     cv=self.cv_folds,
                     scoring=scoring,
-                    n_jobs=self.n_jobs,
-                    verbose=0
+                    n_jobs=self.n_jobs
                 )
+            
+            try:
                 grid_search.fit(X_train_features, y_train)
-            else:
-                with tqdm(total=total_combinations * self.cv_folds, desc="Hyperparameter tuning") as pbar:
-                    grid_search = GridSearchCV(
-                        algorithm_class(random_state=self.random_state),
-                        param_grid,
-                        cv=self.cv_folds,
-                        scoring=scoring,
-                        n_jobs=self.n_jobs,
-                        verbose=0
-                    )
-                    grid_search.fit(X_train_features, y_train)
-                    pbar.update(total_combinations * self.cv_folds)
-            
-            self.model = grid_search.best_estimator_
-            self.best_params = grid_search.best_params_
-            
-            self.print_message(f"Best parameters: {self.best_params}", Fore.GREEN)
-            self.print_message(f"Best CV score: {grid_search.best_score_:.4f}", Fore.GREEN)
+                self.model = grid_search.best_estimator_
+                self.best_params = grid_search.best_params_
+                
+                print(f"Best parameters: {self.best_params}")
+                print(f"Best CV score: {grid_search.best_score_:.4f}")
+                
+            except KeyboardInterrupt:
+                print("Hyperparameter tuning interrupted, using default parameters")
+                self.model = algorithm_class(random_state=self.random_state)
+                self.model.fit(X_train_features, y_train)
+                self.best_params = "Default parameters (tuning interrupted)"
             
         else:
             self.model = algorithm_class(random_state=self.random_state)
-            if self.no_view:
-                self.model.fit(X_train_features, y_train)
-            else:
-                with tqdm(total=1, desc="Training model") as pbar:
-                    self.model.fit(X_train_features, y_train)
-                    pbar.update(1)
+            self.model.fit(X_train_features, y_train)
             self.best_params = "Default parameters"
         
         if self.save_model:
+            import pickle
             import datetime
             
             results_dir = "results"
@@ -345,12 +349,10 @@ class MLPipeline:
                     'feature_names': self.feature_names,
                     'best_params': self.best_params,
                     'target_column': self.target_column,
-                    'output_columns': self.output_columns,
-                    'algorithm': self.algorithm,
-                    'task_type': self.task_type
+                    'output_columns': self.output_columns
                 }, f)
             
-            self.print_message(f"Model saved to: {model_filename}")
+            print(f"Model saved to: {model_filename}")
         
         return self.model
     
@@ -479,8 +481,8 @@ def clear_directories(paths):
 
 def run_preprocessing(args):
     try:
-        from train_preload import run_train_preprocessing
-        from test_preload import run_test_preprocessing
+        from scr.train.train_preload import run_train_preprocessing
+        from scr.test.test_preload import run_test_preprocessing
         
         class TrainArgs:
             def __init__(self, path, target, classification, regression, output_columns, 

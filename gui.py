@@ -136,12 +136,14 @@ class WorkerThread(QThread):
     def __init__(self, command):
         super().__init__()
         self.command = command
+        self.interrupted = False
+        self.process = None
         
     def run(self):
         try:
             self.output_signal.emit("Starting ML Pipeline")
             
-            process = subprocess.Popen(
+            self.process = subprocess.Popen(
                 self.command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -152,23 +154,34 @@ class WorkerThread(QThread):
                 errors='replace'
             )
             
-            for line in process.stdout:
+            for line in self.process.stdout:
+                if self.interrupted:
+                    break
                 safe_line = line.encode('utf-8', errors='replace').decode('utf-8')
                 self.output_signal.emit(safe_line)
                 
-            process.wait()
-            
-            if process.returncode == 0:
+            if not self.interrupted:
+                self.process.wait()
+                
+            if self.interrupted:
+                self.output_signal.emit("Pipeline interrupted by user")
+                self.finished_signal.emit(False)
+            elif self.process.returncode == 0:
                 self.output_signal.emit("Pipeline completed successfully")
                 self.finished_signal.emit(True)
             else:
-                self.output_signal.emit(f"Pipeline failed with code {process.returncode}")
+                self.output_signal.emit(f"Pipeline failed with code {self.process.returncode}")
                 self.finished_signal.emit(False)
                 
         except Exception as e:
             safe_error = str(e).encode('utf-8', errors='replace').decode('utf-8')
             self.output_signal.emit(f"Error: {safe_error}")
             self.finished_signal.emit(False)
+    
+    def stop(self):
+        self.interrupted = True
+        if self.process:
+            self.process.terminate()
 
 class ResourceWidget(QWidget):
     def __init__(self):
@@ -237,6 +250,9 @@ class MLPipelineGUI(QMainWindow):
         self.setGeometry(100, 100, 1400, 900)
         self.setMinimumSize(1200, 800)
         
+        if os.path.exists("icon.ico"):
+            self.setWindowIcon(QIcon("icon.ico"))
+        
         self.settings = QSettings("lastCFG/config.ini", QSettings.Format.IniFormat)
         
         central_widget = QWidget()
@@ -258,10 +274,11 @@ class MLPipelineGUI(QMainWindow):
         self.progress_timer = QTimer()
         self.progress_timer.timeout.connect(self.update_progress)
         self.current_progress = 0
+        self.progress_stage = 0
         
         self.load_settings()
         
-        self.apply_light_theme()
+        self.apply_modern_light_theme()
         
     def closeEvent(self, event):
         self.save_settings()
@@ -292,7 +309,7 @@ class MLPipelineGUI(QMainWindow):
         self.settings.sync()
     
     def load_settings(self):
-        theme = self.settings.value("theme", "Light")
+        theme = self.settings.value("theme", "Modern Light")
         self.theme_combo.setCurrentText(theme)
         
         font_size = int(self.settings.value("font_size", 10))
@@ -420,21 +437,30 @@ class MLPipelineGUI(QMainWindow):
         
         self.run_btn = QPushButton("Run Pipeline")
         self.run_btn.clicked.connect(self.run_pipeline)
-        self.run_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-size: 14px; padding: 10px; }")
         
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.clicked.connect(self.stop_pipeline)
         self.stop_btn.setEnabled(False)
         
+        self.open_results_btn = QPushButton("Open Results")
+        self.open_results_btn.clicked.connect(self.open_results_dir)
+        
         button_layout.addWidget(self.run_btn)
         button_layout.addWidget(self.stop_btn)
+        button_layout.addWidget(self.open_results_btn)
         button_layout.addStretch()
         
         layout.addLayout(button_layout)
         
+        progress_layout = QHBoxLayout()
+        progress_layout.addWidget(QLabel("Progress:"))
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
-        layout.addWidget(self.progress_bar)
+        self.progress_label = QLabel("")
+        progress_layout.addWidget(self.progress_bar, 4)
+        progress_layout.addWidget(self.progress_label, 1)
+        
+        layout.addLayout(progress_layout)
         
         layout.addStretch()
         
@@ -577,8 +603,12 @@ class MLPipelineGUI(QMainWindow):
         self.save_model_cb.setChecked(True)
         output_layout.addWidget(self.save_model_cb, 1, 0, 1, 3)
         
+        self.save_weights_cb = QCheckBox("Save Model Weights")
+        self.save_weights_cb.setChecked(False)
+        output_layout.addWidget(self.save_weights_cb, 2, 0, 1, 3)
+        
         self.no_view_cb = QCheckBox("Minimal Output")
-        output_layout.addWidget(self.no_view_cb, 2, 0, 1, 3)
+        output_layout.addWidget(self.no_view_cb, 3, 0, 1, 3)
         
         right_layout.addWidget(output_group)
         
@@ -650,7 +680,7 @@ class MLPipelineGUI(QMainWindow):
         theme_layout = QGridLayout(theme_group)
         
         self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["Light", "Dark", "Blue", "Green"])
+        self.theme_combo.addItems(["Modern Light", "Modern Dark", "Blue", "Green"])
         self.theme_combo.currentTextChanged.connect(self.change_theme)
         theme_layout.addWidget(QLabel("Theme:"), 0, 0)
         theme_layout.addWidget(self.theme_combo, 0, 1)
@@ -781,6 +811,18 @@ class MLPipelineGUI(QMainWindow):
         if file_path:
             self.model_path_edit.setText(file_path)
 
+    def open_results_dir(self):
+        output_dir = self.output_dir_edit.text() or "results"
+        if os.path.exists(output_dir):
+            if sys.platform == "win32":
+                os.startfile(output_dir)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", output_dir])
+            else:
+                subprocess.Popen(["xdg-open", output_dir])
+        else:
+            QMessageBox.warning(self, "Warning", f"Directory {output_dir} does not exist")
+
     def install_dependencies(self):
         self.install_console.clear()
         self.log_to_install_console("Starting dependency installation")
@@ -851,6 +893,9 @@ class MLPipelineGUI(QMainWindow):
         if self.save_model_cb.isChecked():
             command.append("--save_model")
         
+        if self.save_weights_cb.isChecked():
+            command.append("--save_weights")
+        
         if self.no_view_cb.isChecked():
             command.append("--no_view")
         
@@ -896,16 +941,21 @@ class MLPipelineGUI(QMainWindow):
         self.run_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("Starting...")
         
         self.worker_thread.start()
         
         self.current_progress = 0
-        self.progress_timer.start(100)
+        self.progress_stage = 0
+        self.progress_timer.start(500)
 
     def stop_pipeline(self):
-        if hasattr(self, 'worker_thread') and self.worker_thread.isRunning():
-            self.worker_thread.terminate()
+        if hasattr(self, 'worker_thread'):
+            self.worker_thread.stop()
+            self.worker_thread.wait(3000)
+            if self.worker_thread.isRunning():
+                self.worker_thread.terminate()
             self.log_to_console("Pipeline stopped by user")
             self.pipeline_finished(False)
 
@@ -914,6 +964,7 @@ class MLPipelineGUI(QMainWindow):
         self.stop_btn.setEnabled(False)
         self.progress_bar.setVisible(False)
         self.progress_timer.stop()
+        self.progress_label.setText("")
         
         if success:
             self.statusBar().showMessage("Pipeline completed successfully")
@@ -921,8 +972,18 @@ class MLPipelineGUI(QMainWindow):
             self.statusBar().showMessage("Pipeline failed")
 
     def update_progress(self):
-        self.current_progress = (self.current_progress + 1) % 100
+        stages = ["Extracting...", "Preprocessing...", "Training...", "Finalizing..."]
+        self.current_progress = (self.current_progress + 2) % 100
+        
+        if self.current_progress >= 25 and self.progress_stage == 0:
+            self.progress_stage = 1
+        elif self.current_progress >= 50 and self.progress_stage == 1:
+            self.progress_stage = 2
+        elif self.current_progress >= 75 and self.progress_stage == 2:
+            self.progress_stage = 3
+        
         self.progress_bar.setValue(self.current_progress)
+        self.progress_label.setText(f"{self.current_progress}% - {stages[self.progress_stage]}")
 
     def clear_cache(self):
         try:
@@ -954,144 +1015,173 @@ class MLPipelineGUI(QMainWindow):
                 self.log_to_console(f"Failed to export log: {e}")
 
     def change_theme(self, theme_name):
-        if theme_name == "Dark":
-            self.apply_dark_theme()
-        elif theme_name == "Light":
-            self.apply_light_theme()
+        if theme_name == "Modern Light":
+            self.apply_modern_light_theme()
+        elif theme_name == "Modern Dark":
+            self.apply_modern_dark_theme()
         elif theme_name == "Blue":
             self.apply_blue_theme()
         elif theme_name == "Green":
             self.apply_green_theme()
 
-    def apply_dark_theme(self):
+    def apply_modern_light_theme(self):
         self.setStyleSheet("""
             QMainWindow {
-                background-color: #2b2b2b;
-                color: #ffffff;
+                background-color: #f8f9fa;
+                color: #212529;
             }
             QTabWidget::pane {
-                border: 1px solid #555;
-                background-color: #2b2b2b;
+                border: 1px solid #dee2e6;
+                background-color: #ffffff;
+                border-radius: 6px;
             }
             QTabBar::tab {
-                background-color: #3c3c3c;
-                color: #ffffff;
+                background-color: #e9ecef;
+                color: #495057;
                 padding: 8px 16px;
                 margin-right: 2px;
+                border: 1px solid #dee2e6;
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
             }
             QTabBar::tab:selected {
-                background-color: #007acc;
+                background-color: #ffffff;
+                color: #007bff;
+                border-color: #dee2e6;
+            }
+            QTabBar::tab:hover {
+                background-color: #dee2e6;
             }
             QGroupBox {
                 font-weight: bold;
-                border: 2px solid #555;
-                border-radius: 5px;
+                border: 2px solid #dee2e6;
+                border-radius: 8px;
                 margin-top: 1ex;
                 padding-top: 10px;
-                background-color: #3c3c3c;
-                color: #ffffff;
+                background-color: #ffffff;
+                color: #212529;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 10px;
-                padding: 0 5px 0 5px;
+                padding: 0 8px 0 8px;
+                color: #495057;
             }
             QPushButton {
-                background-color: #555;
+                background-color: #007bff;
                 color: white;
-                border: 1px solid #666;
-                padding: 5px 10px;
-                border-radius: 3px;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: 500;
             }
             QPushButton:hover {
-                background-color: #666;
+                background-color: #0056b3;
             }
             QPushButton:pressed {
-                background-color: #777;
+                background-color: #004085;
+            }
+            QPushButton:disabled {
+                background-color: #6c757d;
+                color: #adb5bd;
             }
             QLineEdit, QComboBox, QSpinBox {
-                background-color: #3c3c3c;
-                color: #ffffff;
-                border: 1px solid #555;
-                padding: 5px;
-                border-radius: 3px;
+                background-color: #ffffff;
+                color: #212529;
+                border: 1px solid #ced4da;
+                padding: 6px 8px;
+                border-radius: 4px;
+            }
+            QLineEdit:focus, QComboBox:focus, QSpinBox:focus {
+                border-color: #007bff;
             }
             QTextEdit {
-                background-color: #1e1e1e;
-                color: #ffffff;
-                border: 1px solid #555;
+                background-color: #ffffff;
+                color: #212529;
+                border: 1px solid #ced4da;
+                border-radius: 4px;
             }
             QProgressBar {
-                border: 1px solid #555;
-                border-radius: 3px;
+                border: 1px solid #ced4da;
+                border-radius: 4px;
                 text-align: center;
-                color: white;
+                background-color: #e9ecef;
             }
             QProgressBar::chunk {
-                background-color: #007acc;
+                background-color: #007bff;
+                border-radius: 3px;
+            }
+            QTableWidget {
+                background-color: #ffffff;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+            }
+            QHeaderView::section {
+                background-color: #e9ecef;
+                padding: 8px;
+                border: 1px solid #dee2e6;
             }
         """)
 
-    def apply_light_theme(self):
+    def apply_modern_dark_theme(self):
         self.setStyleSheet("""
             QMainWindow {
-                background-color: #f0f0f0;
-                color: #000000;
+                background-color: #212529;
+                color: #f8f9fa;
             }
             QTabWidget::pane {
-                border: 1px solid #ccc;
-                background-color: #ffffff;
+                border: 1px solid #495057;
+                background-color: #343a40;
+                border-radius: 6px;
             }
             QTabBar::tab {
-                background-color: #e0e0e0;
-                color: #000000;
+                background-color: #495057;
+                color: #adb5bd;
                 padding: 8px 16px;
                 margin-right: 2px;
+                border: 1px solid #495057;
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
             }
             QTabBar::tab:selected {
-                background-color: #ffffff;
+                background-color: #343a40;
+                color: #4dabf7;
             }
             QGroupBox {
                 font-weight: bold;
-                border: 2px solid #ccc;
-                border-radius: 5px;
+                border: 2px solid #495057;
+                border-radius: 8px;
                 margin-top: 1ex;
                 padding-top: 10px;
-                background-color: #ffffff;
-                color: #000000;
+                background-color: #343a40;
+                color: #f8f9fa;
             }
             QPushButton {
-                background-color: #e0e0e0;
-                color: black;
-                border: 1px solid #ccc;
-                padding: 5px 10px;
-                border-radius: 3px;
+                background-color: #4dabf7;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
             }
             QPushButton:hover {
-                background-color: #d0d0d0;
-            }
-            QPushButton:pressed {
-                background-color: #c0c0c0;
+                background-color: #339af0;
             }
             QLineEdit, QComboBox, QSpinBox {
-                background-color: #ffffff;
-                color: #000000;
-                border: 1px solid #ccc;
-                padding: 5px;
-                border-radius: 3px;
+                background-color: #495057;
+                color: #f8f9fa;
+                border: 1px solid #6c757d;
+                padding: 6px 8px;
+                border-radius: 4px;
             }
             QTextEdit {
-                background-color: #ffffff;
-                color: #000000;
-                border: 1px solid #ccc;
-            }
-            QProgressBar {
-                border: 1px solid #ccc;
-                border-radius: 3px;
-                text-align: center;
+                background-color: #495057;
+                color: #f8f9fa;
+                border: 1px solid #6c757d;
             }
             QProgressBar::chunk {
-                background-color: #4CAF50;
+                background-color: #4dabf7;
             }
         """)
 
@@ -1099,7 +1189,6 @@ class MLPipelineGUI(QMainWindow):
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #e3f2fd;
-                color: #1565c0;
             }
             QTabBar::tab:selected {
                 background-color: #2196f3;
@@ -1107,7 +1196,6 @@ class MLPipelineGUI(QMainWindow):
             }
             QPushButton {
                 background-color: #2196f3;
-                color: white;
             }
         """)
 
@@ -1115,7 +1203,6 @@ class MLPipelineGUI(QMainWindow):
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #e8f5e8;
-                color: #2e7d32;
             }
             QTabBar::tab:selected {
                 background-color: #4caf50;
@@ -1123,7 +1210,6 @@ class MLPipelineGUI(QMainWindow):
             }
             QPushButton {
                 background-color: #4caf50;
-                color: white;
             }
         """)
 
@@ -1134,8 +1220,8 @@ class MLPipelineGUI(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
-    app.setApplicationName("ML Pipeline")
-    app.setApplicationVersion("2.0")
+    app.setApplicationName("ML Pipeline - GUI")
+    app.setApplicationVersion("1.0.1")
     
     try:
         import PyQt6
