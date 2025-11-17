@@ -16,6 +16,10 @@ class TestDataPreprocessor:
         self.target_column = self.preprocessing_info['target_column']
         self.output_columns = self.preprocessing_info.get('output_columns', [])
         
+        self.one_hot_encoded_columns = self.preprocessing_info.get('one_hot_encoded_columns', {})
+        self.high_cardinality_columns = self.preprocessing_info.get('high_cardinality_columns', [])
+        self.label_encoders_info = self.preprocessing_info.get('label_encoders', {})
+        
     def load_preprocessing_info(self, info_path):
         with open(info_path, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -38,7 +42,7 @@ class TestDataPreprocessor:
                         result_df[feature] = df[feature]
                     else:
                         result_df[feature] = 0
-                        print(fFore.BLUE+"Added missing feature: {feature}")
+                        print(Fore.BLUE+f"Added missing feature: {feature}")
             
             for col in self.output_columns:
                 if col in df.columns:
@@ -106,7 +110,116 @@ class TestDataPreprocessor:
         return df
     
     def scale_features(self, df, args):
-        # scaler = self.models.get('scaler')
+        scaler = self.models.get('scaler')
+        if scaler is not None:
+            numeric_cols = [col for col in df.select_dtypes(include=[np.number]).columns 
+                           if col not in args.output_columns and col != args.target]
+            
+            if numeric_cols:
+                df_numeric = df[numeric_cols]
+                df[numeric_cols] = scaler.transform(df_numeric)
+                print(Fore.BLUE+f"Scaled {len(numeric_cols)} numerical features")
+        
+        return df
+    
+    def apply_pca(self, df):
+        pca = self.models.get('pca')
+        if pca is not None:
+            numeric_cols = [col for col in df.select_dtypes(include=[np.number]).columns 
+                           if col not in self.output_columns and col != self.target_column]
+            
+            if numeric_cols:
+                pca_features = pca.transform(df[numeric_cols])
+                pca_columns = [f'PC{i+1}' for i in range(pca_features.shape[1])]
+                pca_df = pd.DataFrame(pca_features, columns=pca_columns, index=df.index)
+                
+                df = df.drop(columns=numeric_cols)
+                df = pd.concat([df, pca_df], axis=1)
+                print(Fore.BLUE+f"Applied PCA transformation")
+        
+        return df
+    
+    def apply_preprocessing(self, df, args):
+        print(Fore.MAGENTA+"Applying preprocessing to test data...")
+        print(Fore.MAGENTA+f"Initial shape: {df.shape}")
+        print(Fore.MAGENTA+f"Output columns to preserve: {args.output_columns}")
+        
+        missing_output_cols = set(args.output_columns) - set(df.columns)
+        if missing_output_cols:
+            print(Fore.YELLOW+f"Warning: Missing output columns in test data: {missing_output_cols}")
+        
+        df = self.handle_missing_values(df)
+        
+        df = self.encode_categorical_features(df)
+        
+        df = self.ensure_feature_consistency(df, args)
+        
+        df = self.scale_features(df, args)
+        
+        df = self.apply_pca(df)
+        
+        print(Fore.MAGENTA+f"Final shape: {df.shape}")
+        return df
+    
+    def handle_missing_values(self, df):
+        for col in df.columns:
+            if col in self.output_columns:
+                continue
+                
+            if col == self.target_column and self.target_column in df.columns:
+                continue
+                
+            if df[col].isnull().any():
+                if df[col].dtype in ['object', 'category']:
+                    mode_val = df[col].mode()[0] if not df[col].mode().empty else 'Unknown'
+                    df[col] = df[col].fillna(mode_val)
+                else:
+                    median_val = df[col].median()
+                    df[col] = df[col].fillna(median_val)
+        
+        return df
+    
+    def encode_categorical_features(self, df):
+        """Универсальное кодирование категориальных признаков"""
+        categorical_cols = df.select_dtypes(include=['object', 'category']).columns
+        
+        for col in categorical_cols:
+            if col in self.output_columns:
+                continue
+                
+            if col == self.target_column and self.task_type == 'classification':
+                le = LabelEncoder()
+                df[col] = le.fit_transform(df[col])
+                self.label_encoders[col] = le
+                print(Fore.BLUE+f"Encoded target column '{col}'")
+                
+            elif col != self.target_column:
+                n_unique = df[col].nunique()
+                
+                if n_unique <= 10:
+                    unique_values = df[col].unique()
+                    self.one_hot_encoded_columns[col] = [f"{col}_{val}" for val in unique_values]
+                    
+                    dummies = pd.get_dummies(df[col], prefix=col)
+                    df = pd.concat([df, dummies], axis=1)
+                    df = df.drop(columns=[col])
+                    print(Fore.BLUE+f"One-hot encoded '{col}' ({n_unique} categories)")
+                    
+                elif n_unique <= 50:
+                    freq_map = df[col].value_counts().to_dict()
+                    df[f'{col}_freq_encoded'] = df[col].map(freq_map)
+                    df = df.drop(columns=[col])
+                    print(Fore.BLUE+f"Frequency encoded '{col}' ({n_unique} categories)")
+                    
+                else:
+                    freq_map = df[col].value_counts().to_dict()
+                    df[f'{col}_freq_encoded'] = df[col].map(freq_map)
+                    df = df.drop(columns=[col])
+                    print(Fore.BLUE+f"Frequency encoded high-cardinality '{col}' ({n_unique} categories)")
+        
+        return df
+    
+    def scale_features(self, df, args):
         scaler = None
         if scaler is not None:
             numeric_cols = [col for col in df.select_dtypes(include=[np.number]).columns 

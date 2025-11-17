@@ -93,25 +93,34 @@ class DatasetPreprocessor:
     
     def handle_missing_values(self, df):
         for col in df.columns:
-            if col in self.output_columns:
-                continue
-                
-            if col == self.target_column:
+            if col in self.output_columns or col == self.target_column:
                 continue
                 
             if df[col].isnull().any():
-                if df[col].dtype in ['object', 'category']:
-                    mode_val = df[col].mode()[0] if not df[col].mode().empty else 'Unknown'
-                    df[col] = df[col].fillna(mode_val)
-                    print(Fore.RED+f"Filled missing values in '{col}' with mode: {mode_val}")
+                missing_percent = df[col].isnull().mean()
+                
+                if missing_percent > 0.8:
+                    df = df.drop(columns=[col])
+                    print(Fore.RED+f"Removed column '{col}' with {missing_percent:.1%} missing values")
+                    
+                elif missing_percent > 0.3:
+                    df[f'{col}_is_missing'] = df[col].isnull().astype(int)
+                    
+                    if df[col].dtype in ['object', 'category']:
+                        df[col] = df[col].fillna('Missing')
+                    else:
+                        df[col] = df[col].fillna(-999)  
+                        
                 else:
-                    median_val = df[col].median()
-                    df[col] = df[col].fillna(median_val)
-                    print(Fore.RED+f"Filled missing values in '{col}' with median: {median_val:.4f}")
+                    if df[col].dtype in ['object', 'category']:
+                        df[col] = df[col].fillna('Unknown')
+                    else:
+                        fill_value = df[col].median() if df[col].notna().sum() > 0 else 0
+                        df[col] = df[col].fillna(fill_value)
         
         return df
     
-    def encode_categorical_features(self, df):
+    def encode_categorical_features(self, df, is_training=True):
         categorical_cols = df.select_dtypes(include=['object', 'category']).columns
         
         for col in categorical_cols:
@@ -126,7 +135,14 @@ class DatasetPreprocessor:
             elif col != self.target_column:
                 n_unique = df[col].nunique()
                 
-                if n_unique <= 10:
+                if n_unique > 10 and is_training and self.target_column in df.columns:
+                    target_mean = df.groupby(col)[self.target_column].mean()
+                    df[f'{col}_target_encoded'] = df[col].map(target_mean)
+                    df[f'{col}_target_encoded'] = df[f'{col}_target_encoded'].fillna(df[self.target_column].mean())
+                    df = df.drop(columns=[col])
+                    print(Fore.BLUE+f"Applied target encoding to '{col}'")
+                
+                elif n_unique <= 15:
                     unique_values = df[col].unique()
                     self.one_hot_encoded_columns[col] = sorted([f"{col}_{val}" for val in unique_values])
                     
@@ -135,15 +151,10 @@ class DatasetPreprocessor:
                     df = df.drop(columns=[col])
                     print(Fore.BLUE+f"Encoded '{col}' with one-hot encoding ({len(dummies.columns)} new features)")
                 else:
-                    if n_unique / len(df) > 0.5:
-                        print(Fore.BLUE+f"Removing high cardinality column: {col} ({n_unique} unique values)")
-                        df = df.drop(columns=[col])
-                        self.high_cardinality_columns.append(col)
-                    else:
-                        freq_encoding = df[col].value_counts().to_dict()
-                        df[col] = df[col].map(freq_encoding)
-                        df[col] = df[col].fillna(0)
-                        print(Fore.BLUE+f"Encoded '{col}' with frequency encoding ({n_unique} unique values)")
+                    freq_encoding = df[col].value_counts().to_dict()
+                    df[f'{col}_freq'] = df[col].map(freq_encoding)
+                    df = df.drop(columns=[col])
+                    print(Fore.BLUE+f"Encoded '{col}' with frequency encoding ({n_unique} unique values)")
         
         return df
     
@@ -169,6 +180,11 @@ class DatasetPreprocessor:
             return df
             
         feature_columns = [col for col in df.columns if col not in self.output_columns and col != self.target_column]
+        
+        if len(feature_columns) <= 30: 
+            self.selected_columns = feature_columns + [self.target_column] + self.output_columns
+            return df
+        
         X = df[feature_columns]
         y = df[self.target_column]
         
@@ -179,10 +195,12 @@ class DatasetPreprocessor:
             
         X_numeric = X[numeric_cols]
         
+        k_features = max(int(len(numeric_cols) * 0.8), 30) 
+        
         if self.task_type == 'classification':
-            selector = SelectKBest(score_func=f_classif, k=min(20, len(numeric_cols)))
+            selector = SelectKBest(score_func=f_classif, k=min(k_features, len(numeric_cols)))
         else:
-            selector = SelectKBest(score_func=f_regression, k=min(20, len(numeric_cols)))
+            selector = SelectKBest(score_func=f_regression, k=min(k_features, len(numeric_cols)))
         
         try:
             selector.fit(X_numeric, y)
@@ -216,9 +234,9 @@ class DatasetPreprocessor:
     
     def apply_pca(self, df):
         numeric_cols = [col for col in df.select_dtypes(include=[np.number]).columns 
-                       if col not in self.output_columns and col != self.target_column]
+                    if col not in self.output_columns and col != self.target_column]
         
-        if len(numeric_cols) > 20:
+        if len(numeric_cols) > 50:
             try:
                 self.pca = PCA(n_components=0.95)
                 pca_features = self.pca.fit_transform(df[numeric_cols])
@@ -234,14 +252,88 @@ class DatasetPreprocessor:
         
         return df
     
+    def create_new_features(self, df):
+        
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        categorical_cols = df.select_dtypes(include=['object', 'category']).columns
+        
+        if len(numeric_cols) > 1:
+            for i, col1 in enumerate(numeric_cols):
+                if col1 in self.output_columns or col1 == self.target_column:
+                    continue
+                for col2 in numeric_cols[i+1:]:
+                    if col2 not in self.output_columns and col2 != self.target_column:
+                        df[f'{col1}_x_{col2}'] = df[col1] * df[col2]
+                        df[f'{col1}_div_{col2}'] = df[col1] / (df[col2] + 1e-8) 
+        
+        for col in numeric_cols:
+            if col in self.output_columns or col == self.target_column:
+                continue
+                
+            if df[col].nunique() > 10:
+                try:
+                    df[f'{col}_bin'] = pd.qcut(df[col], 5, duplicates='drop', labels=False)
+                except:
+                    df[f'{col}_bin'] = pd.cut(df[col], 5, labels=False)
+            
+            if df[col].min() > 0 and df[col].skew() > 1:
+                df[f'{col}_log'] = np.log1p(df[col])
+            
+            df[f'{col}_squared'] = df[col] ** 2
+            df[f'{col}_sqrt'] = np.sqrt(np.abs(df[col]))
+        
+        for col in categorical_cols:
+            if col in self.output_columns or col == self.target_column:
+                continue
+                
+            n_unique = df[col].nunique()
+            
+            freq_map = df[col].value_counts().to_dict()
+            df[f'{col}_freq'] = df[col].map(freq_map)
+            
+            if n_unique > 10:
+                rare_categories = freq_map.keys()
+                if len(rare_categories) > 0:
+                    most_common = list(freq_map.keys())[0]
+                    df[f'{col}_is_rare'] = (df[col] != most_common).astype(int)
+        
+        if len(numeric_cols) > 2:
+            relevant_numeric = [col for col in numeric_cols 
+                            if col not in self.output_columns and col != self.target_column]
+            if relevant_numeric:
+                df['row_mean'] = df[relevant_numeric].mean(axis=1)
+                df['row_std'] = df[relevant_numeric].std(axis=1)
+                df['row_sum'] = df[relevant_numeric].sum(axis=1)
+        
+        date_like_cols = [col for col in df.columns if any(keyword in col.lower() for keyword in 
+                        ['date', 'time', 'year', 'month', 'day'])]
+        
+        for col in date_like_cols:
+            if df[col].dtype == 'object':
+                try:
+                    df[col] = pd.to_datetime(df[col], errors='coerce')
+                    if not df[col].isnull().all():
+                        df[f'{col}_year'] = df[col].dt.year
+                        df[f'{col}_month'] = df[col].dt.month
+                        df[f'{col}_day'] = df[col].dt.day
+                        df[f'{col}_dayofweek'] = df[col].dt.dayofweek
+                except:
+                    pass
+        
+        print(Fore.GREEN+f"Created {len(df.columns) - len(numeric_cols) - len(categorical_cols)} new features")
+        return df
+    
     def preprocess(self, df, is_training=True):
         print(Fore.GREEN+"Starting dataset processing...")
         print(Fore.BLUE+f"Initial shape: {df.shape}")
-        print(Fore.BLUE+f"Initial columns: {df.columns.tolist()}")
+        
+        df = self.create_new_features(df)
+        
+        print(Fore.BLUE+f"After feature engineering: {df.shape}")
         
         df = self.remove_unnecessary_columns(df)
         df = self.handle_missing_values(df)
-        df = self.encode_categorical_features(df)
+        df = self.encode_categorical_features(df, is_training)  
         df = self.remove_linear_dependencies(df)
         
         if is_training:

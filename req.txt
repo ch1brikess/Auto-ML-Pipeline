@@ -4,3 +4,7 @@ scikit-learn>=1.0.0
 tqdm
 rich
 colorama
+psutil
+pyqt6
+gputil
+matplotlib
