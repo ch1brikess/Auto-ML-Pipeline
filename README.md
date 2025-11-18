@@ -1,4 +1,5 @@
 # ML Pipeline - Automated Machine Learning Pipeline
+![95403395-42a0-40fc-83e5-2ec38b885159](https://github.com/user-attachments/assets/133c77d8-8684-4ca9-8f2f-7d538bdbb180)
 
 # Languages
 1. [EN](#EN)
