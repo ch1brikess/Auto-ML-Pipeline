@@ -44,7 +44,7 @@ pyinstaller MLPipline-qtX.spec
 ```
 ### Run interface from gui-qtX(replace X on version of pyqt: 5 or 6):
 ```bash
-python3 ./gui-qtX.py
+python ./gui-qtX.py
 ```
 ## Run without interface
 
@@ -98,7 +98,7 @@ pyinstaller MLPipline-qtX.spec
 ```
 ### Запуск интерфейса из gui-qtX (замените X на версию pyqt: 5 или 6)
 ```bash
-python3 ./gui-qtX.py
+python ./gui-qtX.py
 ```
 ## Запуск без интерфейса
 
