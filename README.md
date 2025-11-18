@@ -36,12 +36,24 @@ pip3 install -r req.txt
 
 ## Use
 
-Example for use:
+## Run with interface
+
+### Build .exe(replace X on version of pyqt: 5 or 6):
+```bash
+pyinstaller MLPipline-qtX.spec
+```
+### Run interface from gui-qtX(replace X on version of pyqt: 5 or 6):
+```bash
+python3 ./gui-qtX.py
+```
+## Run without interface
+
+### Example for use from console:
 ```bash
 python main.py --path .\titanic.zip --target Transported --classification --algorithm DecisionTreeClassifier --output_columns PassengerId Transported
 ```
 
-For more details use:
+### For more details use:
 ```bash
 python main.py --help
 ```
@@ -78,12 +90,24 @@ pip3 install -r req.txt
 
 ## Использование
 
-Пример использования:
+## Запуск с интерфейсом
+
+### Сборка .exe (замените X на версию pyqt: 5 или 6)
+```bash
+pyinstaller MLPipline-qtX.spec
+```
+### Запуск интерфейса из gui-qtX (замените X на версию pyqt: 5 или 6)
+```bash
+python3 ./gui-qtX.py
+```
+## Запуск без интерфейса
+
+### Пример использования из консоли:
 ```bash
 python main.py --path .\titanic.zip --target Transported --classification --algorithm DecisionTreeClassifier --output_columns PassengerId Transported
 ```
 
-Подробнее об использовании:
+### Для получения более подробной информации используйте:
 ```bash
 python main.py --help
 ```
