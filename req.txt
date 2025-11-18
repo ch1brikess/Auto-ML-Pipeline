@@ -6,5 +6,7 @@ rich
 colorama
 psutil
 pyqt6
+pyqt5
+pyinstaller
 gputil
 matplotlib
