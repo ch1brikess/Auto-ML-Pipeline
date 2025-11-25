@@ -22,6 +22,7 @@ warnings.filterwarnings('ignore')
 
 sys.path.append(str(Path(__file__).parent / 'scr' / 'train'))
 sys.path.append(str(Path(__file__).parent / 'scr' / 'test'))
+sys.path.append(str(Path(__file__).parent / 'scr' / 'nlp'))
 
 init(autoreset=True)
 
@@ -289,7 +290,6 @@ class MLPipeline:
             print(f"Testing {total_combinations} parameter combinations with {self.cv_folds}-fold CV")
             print(f"Total fits: {total_combinations * self.cv_folds}")
             
-            # Если слишком много комбинаций, используем RandomizedSearchCV
             if total_combinations * self.cv_folds > 500:
                 print("Too many combinations, using RandomizedSearchCV with 50 iterations")
                 from sklearn.model_selection import RandomizedSearchCV
@@ -486,7 +486,9 @@ def run_preprocessing(args):
         
         class TrainArgs:
             def __init__(self, path, target, classification, regression, output_columns, 
-                         feature_engineering=True, handle_missing=True, encode_categorical=True):
+                         feature_engineering=True, handle_missing=True, encode_categorical=True,
+                         dataset_type='structured', text_columns=None, nlp_method='tfidf',
+                         max_features=10000, use_topic_modeling=True, use_dimensionality_reduction=True):
                 self.path = path
                 self.target = target
                 self.classification = classification
@@ -495,7 +497,13 @@ def run_preprocessing(args):
                 self.feature_engineering = feature_engineering
                 self.handle_missing = handle_missing
                 self.encode_categorical = encode_categorical
-        
+                self.dataset_type = dataset_type
+                self.text_columns = text_columns
+                self.nlp_method = nlp_method
+                self.max_features = max_features
+                self.use_topic_modeling = use_topic_modeling
+                self.use_dimensionality_reduction = use_dimensionality_reduction
+
         if not args.only_test:
             print(Fore.RED+"Step 1/2: Preprocessing training data...")
             train_args = TrainArgs(
@@ -506,7 +514,13 @@ def run_preprocessing(args):
                 output_columns=args.output_columns,
                 feature_engineering=args.feature_engineering,
                 handle_missing=args.handle_missing,
-                encode_categorical=args.encode_categorical
+                encode_categorical=args.encode_categorical,
+                dataset_type=getattr(args, 'dataset_type', 'structured'),
+                text_columns=getattr(args, 'text_columns', None),
+                nlp_method=getattr(args, 'nlp_method', 'tfidf'),
+                max_features=getattr(args, 'max_features', 2000),
+                use_topic_modeling=getattr(args, 'use_topic_modeling', True),
+                use_dimensionality_reduction=getattr(args, 'use_dimensionality_reduction', True)
             )
             
             if not run_train_preprocessing(train_args):
@@ -522,7 +536,13 @@ def run_preprocessing(args):
                 output_columns=args.output_columns,
                 feature_engineering=args.feature_engineering,
                 handle_missing=args.handle_missing,
-                encode_categorical=args.encode_categorical
+                encode_categorical=args.encode_categorical,
+                dataset_type=getattr(args, 'dataset_type', 'structured'),
+                text_columns=getattr(args, 'text_columns', None),
+                nlp_method=getattr(args, 'nlp_method', 'tfidf'),
+                max_features=getattr(args, 'max_features', 2000),
+                use_topic_modeling=getattr(args, 'use_topic_modeling', True),
+                use_dimensionality_reduction=getattr(args, 'use_dimensionality_reduction', True)
             )
             
             if not run_test_preprocessing(test_args):
@@ -543,9 +563,15 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Using ZIP archive
+  # Using ZIP archive with structured data
   python main.py --path data.zip --target Survived --classification --algorithm RandomForestClassifier --output_columns PassengerId
   
+  # Using text data
+  python main.py --train reviews.csv --target sentiment --classification --algorithm LogisticRegression --dataset_type text --text_columns review_text --max_features 3000
+  
+  # Using mixed data
+  python main.py --path mixed_data.zip --target rating --regression --algorithm RandomForestRegressor --dataset_type mixed --text_columns title description
+
   # Using separate train/test files
   python main.py --train train.csv --test test.csv --target price --regression --algorithm GradientBoostingRegressor --output_columns ID
   
@@ -579,6 +605,10 @@ Supported Algorithms:
     data_group.add_argument('--target', '-t', type=str, help='Target column name')
     data_group.add_argument('--output_columns', '-o', type=str, nargs='+', help='Output columns to preserve (e.g., ID columns)')
     data_group.add_argument('--from_cache', action='store_true', help='Use already processed data from cache')
+    data_group.add_argument('--dataset_type', type=str, choices=['structured', 'text', 'mixed'],
+                          help='Type of dataset: structured, text, or mixed')
+    data_group.add_argument('--text_columns', type=str, nargs='+', 
+                          help='Text columns for NLP processing')
     
     model_group = parser.add_argument_group('Model Configuration')
     model_group.add_argument('--algorithm', '-a', type=str,
@@ -603,6 +633,14 @@ Supported Algorithms:
     preprocess_group.add_argument('--no_handle_missing', action='store_true', help='Disable automatic missing value handling')
     preprocess_group.add_argument('--no_encode_categorical', action='store_true', help='Disable automatic categorical encoding')
     preprocess_group.add_argument('--no_tuning', action='store_true', help='Disable hyperparameter tuning')
+    preprocess_group.add_argument('--nlp_method', type=str, choices=['tfidf', 'count'],
+                                default='tfidf', help='NLP vectorization method')
+    preprocess_group.add_argument('--max_features', type=int, default=2000,
+                                help='Maximum number of text features')
+    preprocess_group.add_argument('--no_topic_modeling', action='store_true',
+                                help='Disable topic modeling for text data')
+    preprocess_group.add_argument('--no_dimensionality_reduction', action='store_true',
+                                help='Disable dimensionality reduction for text data')
     
     output_group = parser.add_argument_group('Output Options')
     output_group.add_argument('--save_model', '-sm', action='store_true', help='Save trained model to file')
@@ -669,6 +707,8 @@ Supported Algorithms:
     args.feature_engineering = not args.no_feature_engineering
     args.handle_missing = not args.no_handle_missing
     args.encode_categorical = not args.no_encode_categorical
+    args.use_topic_modeling = not args.no_topic_modeling
+    args.use_dimensionality_reduction = not args.no_dimensionality_reduction
     
     if args.only_test:
         task_type = 'classification' 
@@ -688,6 +728,10 @@ Supported Algorithms:
             print(Fore.BLUE+f"Target: {args.target}")
             print(Fore.BLUE+f"Algorithm: {args.algorithm}")
             print(Fore.BLUE+f"Task type: {task_type}")
+            if hasattr(args, 'dataset_type') and args.dataset_type:
+                print(Fore.BLUE+f"Dataset type: {args.dataset_type}")
+            if hasattr(args, 'text_columns') and args.text_columns:
+                print(Fore.BLUE+f"Text columns: {args.text_columns}")
         
         print(Fore.BLUE+f"CV folds: {args.cv_folds}")
         print(Fore.BLUE+f"Random state: {args.random_state}")
@@ -709,6 +753,10 @@ Supported Algorithms:
         
         print(Fore.YELLOW+f"Feature engineering: {'ENABLED' if args.feature_engineering else 'DISABLED'}")
         print(Fore.YELLOW+f"Hyperparameter tuning: {'ENABLED' if not args.no_tuning else 'DISABLED'}")
+        if hasattr(args, 'dataset_type') and args.dataset_type in ['text', 'mixed']:
+            print(Fore.YELLOW+f"NLP processing: {'ENABLED'}")
+            print(Fore.YELLOW+f"NLP method: {getattr(args, 'nlp_method', 'tfidf')}")
+            print(Fore.YELLOW+f"Max features: {getattr(args, 'max_features', 2000)}")
         print("=" * 60)
     
     Path('cache/scr').mkdir(parents=True, exist_ok=True)

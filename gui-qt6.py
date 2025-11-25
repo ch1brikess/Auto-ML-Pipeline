@@ -6,16 +6,17 @@ import pandas as pd
 import psutil
 import GPUtil
 from pathlib import Path
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QTabWidget, QGroupBox, QLabel, QLineEdit, QPushButton, 
                             QComboBox, QCheckBox, QSpinBox, QTextEdit, QProgressBar,
                             QFileDialog, QMessageBox, QSplitter, QFrame, QScrollArea,
                             QGridLayout, QRadioButton, QButtonGroup, QSlider, QDoubleSpinBox,
                             QProgressBar, QTableWidget, QTableWidgetItem, QHeaderView)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSettings
+from PyQt6.QtCore import Qt,     QThread, pyqtSignal, QTimer, QSettings
 from PyQt6.QtGui import QFont, QPalette, QColor, QTextCursor, QIcon, QPainter, QLinearGradient
 import json
 import time
+import glob
 
 class ResourceMonitor(QThread):
     update_signal = pyqtSignal(dict)
@@ -243,6 +244,115 @@ class ResourceWidget(QWidget):
         self.disk_bar.setValue(int(data['disk']))
         self.disk_label.setText(f"{data['disk']:.1f}%")
 
+class ThemeManager:
+    def __init__(self):
+        self.themes_dir = Path("themes")
+        self.themes_dir.mkdir(exist_ok=True)
+        self.load_builtin_themes()
+    
+    def load_builtin_themes(self):
+        builtin_themes = {
+            "Modern Light": {
+                "name": "Modern Light",
+                "background": "#f8f9fa",
+                "foreground": "#212629",
+                "primary": "#007bff",
+                "secondary": "#6c767d",
+                "accent": "#28a746",
+                "warning": "#ffc107",
+                "danger": "#dc3646",
+                "border": "#dee2e6",
+                "button": "#007bff",
+                "button_hover": "#0066b3",
+                "button_pressed": "#004086",
+                "input_background": "#ffffff",
+                "group_background": "#ffffff"
+            },
+            "Dark Blue": {
+                "name": "Dark Blue",
+                "background": "#1a1a2e",
+                "foreground": "#e6e6e6",
+                "primary": "#16213e",
+                "secondary": "#0f3460",
+                "accent": "#e94660",
+                "warning": "#ffd166",
+                "danger": "#ef476f",
+                "border": "#2d3047",
+                "button": "#16213e",
+                "button_hover": "#0f3460",
+                "button_pressed": "#0a2647",
+                "input_background": "#2d3047",
+                "group_background": "#16213e"
+            },
+            "Material Dark": {
+                "name": "Material Dark",
+                "background": "#121212",
+                "foreground": "#ffffff",
+                "primary": "#bb86fc",
+                "secondary": "#03dac6",
+                "accent": "#cf6679",
+                "warning": "#ffb74d",
+                "danger": "#f44336",
+                "border": "#333333",
+                "button": "#bb86fc",
+                "button_hover": "#9a67ea",
+                "button_pressed": "#7e67c2",
+                "input_background": "#1e1e1e",
+                "group_background": "#1e1e1e"
+            }
+        }
+        
+        for theme_name, theme_data in builtin_themes.items():
+            theme_path = self.themes_dir / f"{theme_name}.json"
+            if not theme_path.exists():
+                with open(theme_path, 'w', encoding='utf-8') as f:
+                    json.dump(theme_data, f, indent=2, ensure_ascii=False)
+    
+    def get_available_themes(self):
+        themes = []
+        theme_files = glob.glob(str(self.themes_dir / "*.json"))
+        
+        for theme_file in theme_files:
+            try:
+                with open(theme_file, 'r', encoding='utf-8') as f:
+                    theme_data = json.load(f)
+                    themes.append(theme_data['name'])
+            except:
+                continue
+        
+        return sorted(themes)
+    
+    def load_theme(self, theme_name):
+        theme_path = self.themes_dir / f"{theme_name}.json"
+        if theme_path.exists():
+            with open(theme_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return None
+    
+    def create_custom_theme(self, name, colors_dict):
+        theme_data = {
+            "name": name,
+            "background": colors_dict.get('background', '#121212'),
+            "foreground": colors_dict.get('foreground', '#ffffff'),
+            "primary": colors_dict.get('primary', '#bb86fc'),
+            "secondary": colors_dict.get('secondary', '#03dac6'),
+            "accent": colors_dict.get('accent', '#cf6679'),
+            "warning": colors_dict.get('warning', '#ffb74d'),
+            "danger": colors_dict.get('danger', '#f44336'),
+            "border": colors_dict.get('border', '#333333'),
+            "button": colors_dict.get('button', '#bb86fc'),
+            "button_hover": colors_dict.get('button_hover', '#9a67ea'),
+            "button_pressed": colors_dict.get('button_pressed', '#7e67c2'),
+            "input_background": colors_dict.get('input_background', '#1e1e1e'),
+            "group_background": colors_dict.get('group_background', '#1e1e1e')
+        }
+        
+        theme_path = self.themes_dir / f"{name}.json"
+        with open(theme_path, 'w', encoding='utf-8') as f:
+            json.dump(theme_data, f, indent=2, ensure_ascii=False)
+        
+        return theme_data
+
 class MLPipelineGUI(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -254,6 +364,7 @@ class MLPipelineGUI(QMainWindow):
             self.setWindowIcon(QIcon("icon.ico"))
         
         self.settings = QSettings("lastCFG/config.ini", QSettings.Format.IniFormat)
+        self.theme_manager = ThemeManager()
         
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -278,7 +389,7 @@ class MLPipelineGUI(QMainWindow):
         
         self.load_settings()
         
-        self.apply_modern_light_theme()
+        self.apply_theme(self.settings.value("theme", "Modern Light"))
         
     def closeEvent(self, event):
         self.save_settings()
@@ -305,6 +416,8 @@ class MLPipelineGUI(QMainWindow):
         self.settings.setValue("last_algorithm", self.algorithm_combo.currentText())
         self.settings.setValue("last_task_type", self.task_type_combo.currentText())
         self.settings.setValue("last_output_columns", self.output_columns_edit.text())
+        self.settings.setValue("last_dataset_type", self.dataset_type_combo.currentText())
+        self.settings.setValue("last_text_columns", self.text_columns_edit.text())
         
         self.settings.sync()
     
@@ -318,7 +431,7 @@ class MLPipelineGUI(QMainWindow):
         memory_limit = float(self.settings.value("memory_limit", 8.0))
         self.memory_limit_spin.setValue(memory_limit)
         
-        cpu_limit = int(self.settings.value("cpu_limit", 75))
+        cpu_limit = int(self.settings.value("cpu_limit", 76))
         self.cpu_limit_spin.setValue(cpu_limit)
         
         use_gpu = self.settings.value("use_gpu", "false") == "true"
@@ -334,6 +447,8 @@ class MLPipelineGUI(QMainWindow):
         self.algorithm_combo.setCurrentText(self.settings.value("last_algorithm", "RandomForestClassifier"))
         self.task_type_combo.setCurrentText(self.settings.value("last_task_type", "Classification"))
         self.output_columns_edit.setText(self.settings.value("last_output_columns", ""))
+        self.dataset_type_combo.setCurrentText(self.settings.value("last_dataset_type", "Structured Data"))
+        self.text_columns_edit.setText(self.settings.value("last_text_columns", ""))
     
     def create_tabs(self, main_layout):
         tabs = QTabWidget()
@@ -358,6 +473,19 @@ class MLPipelineGUI(QMainWindow):
     def create_quick_start_tab(self):
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        
+
+        dataset_type_group = QGroupBox("Dataset Type")
+        dataset_type_layout = QHBoxLayout(dataset_type_group)
+        
+        self.dataset_type_combo = QComboBox()
+        self.dataset_type_combo.addItems(["Structured Data", "Text Data", "Mixed Data"])
+        self.dataset_type_combo.currentTextChanged.connect(self.on_dataset_type_changed)
+        dataset_type_layout.addWidget(QLabel("Dataset Type:"))
+        dataset_type_layout.addWidget(self.dataset_type_combo)
+        dataset_type_layout.addStretch()
+        
+        layout.addWidget(dataset_type_group)
         
         data_group = QGroupBox("Data Selection")
         data_layout = QGridLayout(data_group)
@@ -392,6 +520,36 @@ class MLPipelineGUI(QMainWindow):
         data_layout.addWidget(self.test_browse_btn, 3, 2)
         
         layout.addWidget(data_group)
+        
+        self.nlp_group = QGroupBox("NLP Settings")
+        nlp_layout = QGridLayout(self.nlp_group)
+        
+        self.text_columns_edit = QLineEdit()
+        self.text_columns_edit.setPlaceholderText("title, description, review_text")
+        nlp_layout.addWidget(QLabel("Text Columns:"), 0, 0)
+        nlp_layout.addWidget(self.text_columns_edit, 0, 1)
+        
+        self.nlp_method_combo = QComboBox()
+        self.nlp_method_combo.addItems(["TF-IDF", "Count Vectorizer"])
+        nlp_layout.addWidget(QLabel("Vectorization:"), 1, 0)
+        nlp_layout.addWidget(self.nlp_method_combo, 1, 1)
+        
+        self.max_features_spin = QSpinBox()
+        self.max_features_spin.setRange(100, 10000)
+        self.max_features_spin.setValue(2000)
+        self.max_features_spin.setSingleStep(100)
+        nlp_layout.addWidget(QLabel("Max Features:"), 2, 0)
+        nlp_layout.addWidget(self.max_features_spin, 2, 1)
+        
+        self.use_topic_modeling_cb = QCheckBox("Use Topic Modeling")
+        self.use_topic_modeling_cb.setChecked(True)
+        nlp_layout.addWidget(self.use_topic_modeling_cb, 3, 0, 1, 2)
+        
+        self.use_dimensionality_reduction_cb = QCheckBox("Use Dimensionality Reduction")
+        self.use_dimensionality_reduction_cb.setChecked(True)
+        nlp_layout.addWidget(self.use_dimensionality_reduction_cb, 4, 0, 1, 2)
+        
+        layout.addWidget(self.nlp_group)
         
         model_group = QGroupBox("Model Configuration")
         model_layout = QGridLayout(model_group)
@@ -465,6 +623,7 @@ class MLPipelineGUI(QMainWindow):
         layout.addStretch()
         
         self.on_data_mode_changed("ZIP Archive")
+        self.on_dataset_type_changed("Structured Data")
         
         return widget
 
@@ -481,12 +640,12 @@ class MLPipelineGUI(QMainWindow):
         self.packages_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         
         packages = [
-            ("pandas", ">=1.5.0"),
+            ("pandas", ">=1.6.0"),
             ("numpy", ">=1.21.0"), 
             ("scikit-learn", ">=1.0.0"),
             ("tqdm", ">=4.60.0"),
             ("colorama", ">=0.4.0"),
-            ("psutil", ">=5.8.0"),
+            ("psutil", ">=6.8.0"),
             ("GPUtil", ">=1.4.0")
         ]
         
@@ -680,10 +839,15 @@ class MLPipelineGUI(QMainWindow):
         theme_layout = QGridLayout(theme_group)
         
         self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["Modern Light"])
+        available_themes = self.theme_manager.get_available_themes()
+        self.theme_combo.addItems(available_themes)
         self.theme_combo.currentTextChanged.connect(self.change_theme)
         theme_layout.addWidget(QLabel("Theme:"), 0, 0)
         theme_layout.addWidget(self.theme_combo, 0, 1)
+        
+        self.create_theme_btn = QPushButton("Create Custom Theme")
+        self.create_theme_btn.clicked.connect(self.create_custom_theme)
+        theme_layout.addWidget(self.create_theme_btn, 0, 2)
         
         self.font_size_spin = QSpinBox()
         self.font_size_spin.setRange(8, 20)
@@ -706,7 +870,7 @@ class MLPipelineGUI(QMainWindow):
         
         self.cpu_limit_spin = QSpinBox()
         self.cpu_limit_spin.setRange(1, 100)
-        self.cpu_limit_spin.setValue(75)
+        self.cpu_limit_spin.setValue(76)
         self.cpu_limit_spin.setSuffix("%")
         resources_layout.addWidget(QLabel("CPU Limit:"), 1, 0)
         resources_layout.addWidget(self.cpu_limit_spin, 1, 1)
@@ -758,7 +922,7 @@ class MLPipelineGUI(QMainWindow):
                 "RandomForestRegressor",
                 "LinearRegression",
                 "SVR",
-                "DecisionTreeRegressor", 
+                "DecisionTreeRegressor",
                 "KNeighborsRegressor",
                 "GradientBoostingRegressor"
             ]
@@ -775,6 +939,11 @@ class MLPipelineGUI(QMainWindow):
         self.train_browse_btn.setVisible(not is_zip_mode)
         self.test_path_edit.setVisible(not is_zip_mode)
         self.test_browse_btn.setVisible(not is_zip_mode)
+
+    def on_dataset_type_changed(self, dataset_type):
+        """Обработчик изменения типа датасета"""
+        is_text_data = dataset_type in ["Text Data", "Mixed Data"]
+        self.nlp_group.setVisible(is_text_data)
 
     def browse_zip(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -866,6 +1035,30 @@ class MLPipelineGUI(QMainWindow):
     def run_pipeline(self):
         command = [sys.executable, "main.py"]
         
+        # Параметры типа датасета и NLP
+        dataset_type = self.dataset_type_combo.currentText()
+        if dataset_type == "Text Data":
+            command.extend(["--dataset_type", "text"])
+        elif dataset_type == "Mixed Data":
+            command.extend(["--dataset_type", "mixed"])
+        
+        if self.nlp_group.isVisible():
+            if self.text_columns_edit.text():
+                text_columns = [col.strip() for col in self.text_columns_edit.text().split(",")]
+                command.extend(["--text_columns"] + text_columns)
+            
+            if self.nlp_method_combo.currentText() == "Count Vectorizer":
+                command.extend(["--nlp_method", "count"])
+            
+            if self.max_features_spin.value() != 2000:
+                command.extend(["--max_features", str(self.max_features_spin.value())])
+            
+            if not self.use_topic_modeling_cb.isChecked():
+                command.append("--no_topic_modeling")
+            
+            if not self.use_dimensionality_reduction_cb.isChecked():
+                command.append("--no_dimensionality_reduction")
+        
         if self.output_dir_edit.text():
             command.extend(["--output_dir", self.output_dir_edit.text()])
         
@@ -892,9 +1085,6 @@ class MLPipelineGUI(QMainWindow):
         
         if self.save_model_cb.isChecked():
             command.append("--save_model")
-        
-        if self.save_weights_cb.isChecked():
-            command.append("--save_weights")
         
         if self.no_view_cb.isChecked():
             command.append("--no_view")
@@ -948,7 +1138,7 @@ class MLPipelineGUI(QMainWindow):
         
         self.current_progress = 0
         self.progress_stage = 0
-        self.progress_timer.start(500)
+        self.progress_timer.start(600)
 
     def stop_pipeline(self):
         if hasattr(self, 'worker_thread'):
@@ -975,11 +1165,11 @@ class MLPipelineGUI(QMainWindow):
         stages = ["Extracting...", "Preprocessing...", "Training...", "Finalizing..."]
         self.current_progress = (self.current_progress + 2) % 100
         
-        if self.current_progress >= 25 and self.progress_stage == 0:
+        if self.current_progress >= 26 and self.progress_stage == 0:
             self.progress_stage = 1
-        elif self.current_progress >= 50 and self.progress_stage == 1:
+        elif self.current_progress >= 60 and self.progress_stage == 1:
             self.progress_stage = 2
-        elif self.current_progress >= 75 and self.progress_stage == 2:
+        elif self.current_progress >= 76 and self.progress_stage == 2:
             self.progress_stage = 3
         
         self.progress_bar.setValue(self.current_progress)
@@ -1015,108 +1205,189 @@ class MLPipelineGUI(QMainWindow):
                 self.log_to_console(f"Failed to export log: {e}")
 
     def change_theme(self, theme_name):
-        if theme_name == "Modern Light":
-            self.apply_modern_light_theme()
+        self.apply_theme(theme_name)
 
-    def apply_modern_light_theme(self):
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #f8f9fa;
-                color: #212529;
-            }
-            QTabWidget::pane {
-                border: 1px solid #dee2e6;
-                background-color: #ffffff;
+    def apply_theme(self, theme_name):
+        theme_data = self.theme_manager.load_theme(theme_name)
+        if not theme_data:
+            return
+        
+        stylesheet = f"""
+            QMainWindow {{
+                background-color: {theme_data['background']};
+                color: {theme_data['foreground']};
+            }}
+            QTabWidget::pane {{
+                border: 1px solid {theme_data['border']};
+                background-color: {theme_data['background']};
                 border-radius: 6px;
-            }
-            QTabBar::tab {
-                background-color: #e9ecef;
-                color: #495057;
+            }}
+            QTabBar::tab {{
+                background-color: {theme_data['secondary']};
+                color: {theme_data['foreground']};
                 padding: 8px 16px;
                 margin-right: 2px;
-                border: 1px solid #dee2e6;
+                border: 1px solid {theme_data['border']};
                 border-bottom: none;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
-            }
-            QTabBar::tab:selected {
-                background-color: #ffffff;
-                color: #007bff;
-                border-color: #dee2e6;
-            }
-            QTabBar::tab:hover {
-                background-color: #dee2e6;
-            }
-            QGroupBox {
+            }}
+            QTabBar::tab:selected {{
+                background-color: {theme_data['background']};
+                color: {theme_data['primary']};
+                border-color: {theme_data['border']};
+            }}
+            QTabBar::tab:hover {{
+                background-color: {theme_data['accent']};
+            }}
+            QGroupBox {{
                 font-weight: bold;
-                border: 2px solid #dee2e6;
+                border: 2px solid {theme_data['border']};
                 border-radius: 8px;
                 margin-top: 1ex;
                 padding-top: 10px;
-                background-color: #ffffff;
-                color: #212529;
-            }
-            QGroupBox::title {
+                background-color: {theme_data['group_background']};
+                color: {theme_data['foreground']};
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 8px 0 8px;
-                color: #495057;
-            }
-            QPushButton {
-                background-color: #007bff;
+                color: {theme_data['primary']};
+            }}
+            QPushButton {{
+                background-color: {theme_data['button']};
                 color: white;
                 border: none;
                 padding: 8px 16px;
                 border-radius: 4px;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background-color: #0056b3;
-            }
-            QPushButton:pressed {
-                background-color: #004085;
-            }
-            QPushButton:disabled {
-                background-color: #6c757d;
-                color: #adb5bd;
-            }
-            QLineEdit, QComboBox, QSpinBox {
-                background-color: #ffffff;
-                color: #212529;
-                border: 1px solid #ced4da;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background-color: {theme_data['button_hover']};
+            }}
+            QPushButton:pressed {{
+                background-color: {theme_data['button_pressed']};
+            }}
+            QPushButton:disabled {{
+                background-color: {theme_data['secondary']};
+                color: {theme_data['foreground']};
+            }}
+            QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
+                background-color: {theme_data['input_background']};
+                color: {theme_data['foreground']};
+                border: 1px solid {theme_data['border']};
                 padding: 6px 8px;
                 border-radius: 4px;
-            }
-            QLineEdit:focus, QComboBox:focus, QSpinBox:focus {
-                border-color: #007bff;
-            }
-            QTextEdit {
-                background-color: #ffffff;
-                color: #212529;
-                border: 1px solid #ced4da;
+            }}
+            QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{
+                border-color: {theme_data['primary']};
+            }}
+            QTextEdit {{
+                background-color: {theme_data['input_background']};
+                color: {theme_data['foreground']};
+                border: 1px solid {theme_data['border']};
                 border-radius: 4px;
-            }
-            QProgressBar {
-                border: 1px solid #ced4da;
+            }}
+            QProgressBar {{
+                border: 1px solid {theme_data['border']};
                 border-radius: 4px;
                 text-align: center;
-                background-color: #e9ecef;
-            }
-            QProgressBar::chunk {
-                background-color: #007bff;
+                background-color: {theme_data['secondary']};
+                color: {theme_data['foreground']};
+            }}
+            QProgressBar::chunk {{
+                background-color: {theme_data['primary']};
                 border-radius: 3px;
-            }
-            QTableWidget {
-                background-color: #ffffff;
-                border: 1px solid #dee2e6;
+            }}
+            QTableWidget {{
+                background-color: {theme_data['input_background']};
+                border: 1px solid {theme_data['border']};
                 border-radius: 4px;
-            }
-            QHeaderView::section {
-                background-color: #e9ecef;
+                color: {theme_data['foreground']};
+            }}
+            QHeaderView::section {{
+                background-color: {theme_data['secondary']};
                 padding: 8px;
-                border: 1px solid #dee2e6;
-            }
-        """)
+                border: 1px solid {theme_data['border']};
+                color: {theme_data['foreground']};
+            }}
+            QRadioButton {{
+                color: {theme_data['foreground']};
+            }}
+            QCheckBox {{
+                color: {theme_data['foreground']};
+            }}
+            QLabel {{
+                color: {theme_data['foreground']};
+            }}
+        """
+        
+        self.setStyleSheet(stylesheet)
+
+    def create_custom_theme(self):
+        from PyQt6.QtWidgets import QDialog, QFormLayout, QColorDialog
+        
+        class ThemeCreatorDialog(QDialog):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.setWindowTitle("Create Custom Theme")
+                self.setModal(True)
+                self.setFixedSize(400, 600)
+                
+                layout = QFormLayout(self)
+                
+                self.theme_name = QLineEdit()
+                layout.addRow("Theme Name:", self.theme_name)
+                
+                self.color_buttons = {}
+                color_fields = [
+                    'background', 'foreground', 'primary', 'secondary', 
+                    'accent', 'warning', 'danger', 'border', 'button',
+                    'button_hover', 'button_pressed', 'input_background', 
+                    'group_background'
+                ]
+                
+                for field in color_fields:
+                    btn = QPushButton("#FFFFFF")
+                    btn.setFixedWidth(80)
+                    btn.clicked.connect(lambda checked, f=field: self.choose_color(f))
+                    self.color_buttons[field] = btn
+                    layout.addRow(field.replace('_', ' ').title() + ":", btn)
+                
+                self.create_btn = QPushButton("Create Theme")
+                self.create_btn.clicked.connect(self.accept)
+                self.cancel_btn = QPushButton("Cancel")
+                self.cancel_btn.clicked.connect(self.reject)
+                
+                button_layout = QHBoxLayout()
+                button_layout.addWidget(self.create_btn)
+                button_layout.addWidget(self.cancel_btn)
+                layout.addRow(button_layout)
+            
+            def choose_color(self, field):
+                color = QColorDialog.getColor()
+                if color.isValid():
+                    hex_color = color.name()
+                    self.color_buttons[field].setText(hex_color)
+                    self.color_buttons[field].setStyleSheet(f"background-color: {hex_color}; color: {'white' if color.lightness() < 128 else 'black'}")
+            
+            def get_theme_data(self):
+                colors = {}
+                for field, btn in self.color_buttons.items():
+                    colors[field] = btn.text()
+                return self.theme_name.text(), colors
+        
+        dialog = ThemeCreatorDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            theme_name, colors = dialog.get_theme_data()
+            if theme_name:
+                self.theme_manager.create_custom_theme(theme_name, colors)
+                current_theme = self.theme_combo.currentText()
+                self.theme_combo.clear()
+                self.theme_combo.addItems(self.theme_manager.get_available_themes())
+                self.theme_combo.setCurrentText(theme_name)
+                self.apply_theme(theme_name)
 
     def change_font_size(self, size):
         font = self.font()
